@@ -764,7 +764,6 @@
   .chip-x:hover{background:rgba(255,92,92,.28); border-color:var(--red);}
 
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style id="loopwiseCss">
@@ -1127,7 +1126,7 @@
             <div class="field"><label class="field-label">Difficulty</label>
               <select id="genDifficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
             </div>
-            <select id="quizModeSelect" style="display:none;"><option value="solo" selected>Solo</option></select>
+            
           </div>
 
           <div id="soloActions">
@@ -1148,35 +1147,7 @@
     </div>
     </div>
 
-    <div id="multiMode" style="display:none;">
-
-    <div id="mpJoinCard" class="card">
-      <h2>Play with friends</h2>
-      <p class="hint">Everyone using this same link and the same room code shares one leaderboard.</p>
-      <div class="field"><label class="field-label">Your name</label><input type="text" id="mpName" placeholder="What should the leaderboard call you?"></div>
-      <div class="row2">
-        <div class="field"><label class="field-label">Room code</label><input type="text" id="mpRoomInput" placeholder="e.g. FROGS" style="text-transform:uppercase;" maxlength="8"></div>
-      </div>
-      <div class="row2">
-        <button class="btn btn-teal" id="mpJoinBtn">Join room</button>
-        <button class="btn btn-ghost" id="mpCreateBtn">Create new room</button>
-      </div>
-    </div>
-
-    <div id="mpRoomCard" class="card" style="display:none;">
-      <h2>Room <span id="mpRoomLabel" style="color:var(--accent);"></span></h2>
-      <p class="hint">Share this code with friends so they can join the same room.</p>
-      <button class="btn btn-ghost" id="mpLeaveBtn">Leave room</button>
-    </div>
-
-    <div id="mpLiveCard" class="card" style="display:none;">
-      <h2>Live Match <span style="color:var(--text-faint); font-weight:400; font-size:12px;">— everyone answers together</span></h2>
-      <div id="mpLiveArea"></div>
-    </div>
-
-    <div class="list-label" id="mpLeaderboardLabel" style="display:none;"><span>All-time room leaderboard</span></div>
-    <div id="mpLeaderboard"></div>
-    </div>
+    
   </div>
 
   <!-- ===================== FLASHCARDS ===================== -->
@@ -1434,40 +1405,13 @@
       { const bt = $('bgTeal'); if(bt) bt.classList.toggle('on', t.dataset.tab === 'plan' || t.dataset.tab === 'perf'); }
       { const on = t.dataset.tab === 'profile', bgp = $('bgPurple');
         if(bgp) bgp.classList.toggle('on', on); }
-      if(t.dataset.tab === 'test' && isMultiModeActive()){
-        if(IS_HOSTED_ENV){ renderMpLeaderboard(); startLivePolling(); }
-        else{ startP2PTick(); }
-      }
     });
-  });
-
-  function isMultiModeActive(){
-    return $('panel-test').classList.contains('active') && $('multiMode').style.display !== 'none';
-  }
-
-  $('quizModeSelect').addEventListener('change', ()=>{
-    const mode = $('quizModeSelect').value;
-    $('soloMode').style.display = (mode === 'solo') ? 'block' : 'none';
-    $('soloActions').style.display = (mode === 'solo') ? 'block' : 'none';
-    $('multiMode').style.display = (mode === 'multi') ? 'block' : 'none';
-    if(mode === 'multi'){
-      if(mpRoomCode){
-        if(IS_HOSTED_ENV){ renderMpLeaderboard(); startLivePolling(); }
-        else{ startP2PTick(); }
-      }
-    }else{
-      stopLivePolling();
-      stopP2PTick();
-    }
   });
 
   /* ===================== TEST GENERATOR ===================== */
   let savedTests = [];
   let currentQuiz = null;
   let highScore = 0;
-  let mpPlayerId = null;
-  let mpName = '';
-  let mpRoomCode = null;
 
   async function loadHighScore(){
     try{
@@ -1684,11 +1628,10 @@
   function levelInstruction(level){
     return (level && LEVEL_PROMPTS[level] ? LEVEL_PROMPTS[level] + ' ' : 'Match the difficulty of the provided sources themselves. ') + SOURCE_ONLY;
   }
-  // When a YouTube video is part of the material, questions must come from that video only.
+  // Notes about web-page text.
   function videoClause(text){
     const t = String(text || '');
     let out = '';
-    if(/\[YouTube video/.test(t)) out += 'The material includes a YouTube video (its transcript if one is given, otherwise its title and channel). Write questions ONLY about what that video covers. When there is no transcript, use the title and your own knowledge of that subject; never say you cannot access the video, and always reply with the JSON only. Ignore any other video and any older notes.\n';
     if(/\[Website:/.test(t)) out += 'The material includes text taken from web pages the student provided. Base the questions on that text.\n';
     return out;
   }
@@ -1701,7 +1644,7 @@
       ? (topicText ? `the attached image, plus these notes:\n"""\n${topicText}\n"""` : `the attached image`)
       : `this material:\n"""\n${topicText}\n"""`;
     return `${levelInstruction(level)}${videoClause(topicText)}${langRule('flashLang')}Create exactly ${count} flashcards (term/definition pairs) based on ${material}. Match the format of the notes: if they are a vocabulary or term list, put the word on the front and its meaning on the back; otherwise put a brief key point on the front and its explanation on the back.
-Pick the most important terms, concepts, dates, or facts. Keep each term short (a few words) and each definition concise (under 25 words).
+If the notes are split into paragraphs, treat each paragraph as a separate point: cover every paragraph, give each at least one card, and never mix two paragraphs into one card.\nPick the most important terms, concepts, dates, or facts. Keep each term short (a few words) and each definition concise (under 25 words).
 Respond with ONLY a raw JSON array, no markdown code fences, no prose before or after. Each item must match exactly:
 {"term":"...","definition":"..."}`;
   }
@@ -2004,7 +1947,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     let topicText = ($('flashInput').value + '\n\n' + (($('flashLinkTa') || {}).value || '')).trim();
     if(!topicText && !flashAttachedImage){ nudge($('flashInput')); return; }
     if(!flashAttachedImage && linkOnlyNeedsContext(topicText)){ const _h = urlHint(topicText); if(_h){ topicText = topicText + '\n\nTopic from the link address: ' + _h; } else { $('flashGenStatus').innerHTML = NEED_CONTEXT_MSG; nudge($('flashInput')); return; } }
-    if(!/\[YouTube video|\[Website:/.test(topicText)) topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim();
+    if(!/\[Website:/.test(topicText)) topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim();
 
     let count = parseInt($('flashCount').value, 10);
     if(!count || count < 1) count = 10;
@@ -2127,6 +2070,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
 """
 ${text}
 """
+If the text has several paragraphs, each paragraph is a separate point: explain each one on its own under its own short heading (### Point 1, ### Point 2, ...) and do not blend them together.
 Explain what it means in plain, everyday language, as if talking a student through it step by step. Break down any hard vocabulary (define jargon terms inline in parentheses the first time they appear). Use short paragraphs and, where helpful, a short bulleted list of the key takeaways at the end under a "Key takeaways:" heading. Do not just summarize — actually teach it, the way a good teacher would explain it out loud. Keep it encouraging and clear. Respond in plain text/markdown-lite only — no JSON.`;
   }
 
@@ -3586,164 +3530,10 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   const flashAttach = wireFileAttach({ btnId:'flashFileBtn', menuId:'flashFileMenu', chipId:'flashFileChip', textareaId:'flashInput', onImageChange:(img)=>{ flashAttachedImage = img; } });
 
 
-  /* ===================== YouTube links ===================== */
-  function ytIdFrom(u){
-    const m = String(u).match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\/?\?(?:[^#\s]*&)?v=|embed\/|shorts\/|live\/|v\/|e\/))([A-Za-z0-9_-]{11})/i);
-    return m ? m[1] : null;
-  }
-  function ytUrlsIn(text){
-    const out = [], seen = {};
-    (String(text).match(/(?:https?:\/\/)?(?:[a-z0-9-]+\.)?(?:youtube(?:-nocookie)?\.com|youtu\.be)\/[^\s]+/gi) || []).forEach(u => {
-      const id = ytIdFrom(u); if(id && !seen[id]){ seen[id] = 1; out.push({ id, url:u }); }
-    });
-    return out;
-  }
   async function fetchWithTimeout(url, ms){
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
     try{ return await fetch(url, { signal: ctl.signal }); } finally { clearTimeout(t); }
   }
-  async function ytLookup(id, url){
-    const info = { title:'', author:'', transcript:'', about:'' };
-    const watch = 'https://www.youtube.com/watch?v=' + id;
-    // Title/author: public oEmbed works for any public or unlisted video, whoever owns the channel.
-    const oembeds = [`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(watch)}`,
-                     `https://noembed.com/embed?url=${encodeURIComponent(watch)}`];
-    await asyncLoop(oembeds.length, async (k) => {
-      try{ const r = await fetchWithTimeout(oembeds[k], 6000); if(r.ok){ const j = await r.json(); if(j && j.title){ info.title = j.title; info.author = j.author_name || ''; return true; } } }catch(e){}
-    });
-    // Captions: ask which tracks exist (any language, manual or auto-generated), then try each.
-    const tracks = [];
-    try{
-      const r = await fetchWithTimeout(`https://www.youtube.com/api/timedtext?type=list&v=${id}`, 6000);
-      if(r.ok){ const x = await r.text(); [...x.matchAll(/<track\b[^>]*>/g)].forEach(m => { const l = (m[0].match(/lang_code="([^"]+)"/)||[])[1], k = (m[0].match(/kind="([^"]+)"/)||[])[1]; if(l) tracks.push({ l, k }); }); }
-    }catch(e){}
-    ['en','en-US','en-GB'].forEach(l => tracks.push({ l, k:'' })); tracks.push({ l:'en', k:'asr' });
-    const tried = {};
-    await asyncLoop(tracks.length, async (k) => {
-      const t = tracks[k];
-      const key = t.l + '|' + (t.k||''); if(tried[key]) return; tried[key] = 1;
-      try{
-        const r = await fetchWithTimeout(`https://www.youtube.com/api/timedtext?v=${id}&lang=${encodeURIComponent(t.l)}${t.k ? '&kind=' + t.k : ''}&fmt=json3`, 7000);
-        if(!r.ok) return;
-        const j = await r.json();
-        const txt = (j.events || []).map(e => (e.segs || []).map(x => x.utf8).join('')).join(' ').replace(/\s+/g,' ').trim();
-        if(txt.length > 200){ info.transcript = txt.slice(0, 14000); return true; }
-      }catch(e){}
-    });
-    // Beyond captions: description, chapters and topic keywords from the watch page and public mirrors.
-    // These run side by side, each fails silently, and together they tell us what the video covers.
-    const parts = [];
-    const jobs = [
-      (async () => {
-        const r = await fetchWithTimeout('https://r.jina.ai/' + watch, 9000); if(!r.ok) return;
-        const t = (await r.text()).replace(/\s+/g, ' ').trim();
-        const tm = t.match(/Title:\s*(.+?)(?:\s+URL Source:|\s+Markdown Content:|$)/);
-        if(!info.title && tm) info.title = tm[1].replace(/\s*-\s*YouTube\s*$/i, '').slice(0, 160);
-        const body = t.replace(/^.*?Markdown Content:/, '');
-        if(body.length > 150) parts.push('Page text: ' + body.slice(0, 3500));
-      })(),
-      (async () => {
-        const r = await fetchWithTimeout('https://pipedapi.kavin.rocks/streams/' + id, 8000); if(!r.ok) return;
-        const j = await r.json(); if(!j) return;
-        if(!info.title && j.title) info.title = String(j.title).slice(0, 160);
-        if(!info.author && j.uploader) info.author = String(j.uploader);
-        if(j.description) parts.push('Description: ' + String(j.description).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 2500));
-        if(Array.isArray(j.chapters) && j.chapters.length) parts.push('Chapters: ' + j.chapters.map(c => c.title).filter(Boolean).join('; ').slice(0, 800));
-        if(Array.isArray(j.tags) && j.tags.length) parts.push('Topics: ' + j.tags.slice(0, 20).join(', '));
-      })(),
-      (async () => {
-        const r = await fetchWithTimeout('https://inv.nadeko.net/api/v1/videos/' + id + '?fields=title,author,description,keywords,genre', 8000); if(!r.ok) return;
-        const j = await r.json(); if(!j) return;
-        if(!info.title && j.title) info.title = String(j.title).slice(0, 160);
-        if(!info.author && j.author) info.author = String(j.author);
-        if(j.description) parts.push('Description: ' + String(j.description).replace(/\s+/g, ' ').slice(0, 2500));
-        if(Array.isArray(j.keywords) && j.keywords.length) parts.push('Topics: ' + j.keywords.slice(0, 20).join(', '));
-      })()
-    ];
-    await Promise.all(jobs.map(j => j.catch(() => {})));
-    const uniq = []; parts.forEach(x => { if(!uniq.some(u => u.slice(0, 60) === x.slice(0, 60))) uniq.push(x); });
-    info.about = uniq.join(' ').replace(/\s+/g, ' ').slice(0, 6000);
-    return info;
-  }
-  const YT_NOTE_RE = /\n*\[YouTube video[^\n]*\](?:\n(?:Transcript|Video details):\n[^\n]*)?\n\[end of video\]/g;
-  function wireYouTube(textareaId, anchorId){
-    const ta = $(textareaId), anchor = $(anchorId);
-    if(!ta || !anchor) return;
-    const box = document.createElement('div'); box.style.display = 'none';
-    anchor.insertAdjacentElement('afterend', box);
-    let timer = null, currentId = null;
-    function clearAll(){ ta.value = ta.value.replace(YT_NOTE_RE, ''); box.innerHTML = ''; box.style.display = 'none'; }
-    box.className = 'link-box'; box._reset = () => { currentId = null; clearAll(); };
-    async function scan(){
-      const vids = ytUrlsIn(ta.value.replace(SITE_NOTE_RE, ''));
-      if(!vids.length){ if(currentId){ currentId = null; clearAll(); } return; }
-      const latest = vids[vids.length - 1];
-      if(latest.id === currentId) return;
-      currentId = latest.id;
-      // newest video wins: drop older links, their notes and their cards
-      ta.value = ta.value.replace(YT_NOTE_RE, '');
-      vids.slice(0, -1).forEach(v => { ta.value = ta.value.replace(v.url, '').replace(/\n{3,}/g, '\n\n'); });
-      box.innerHTML = ''; box.style.display = 'block';
-      const chip = document.createElement('div'); chip.className = 'yt-chip';
-      chip.innerHTML = `<img src="https://img.youtube.com/vi/${latest.id}/mqdefault.jpg" alt=""><div><div class="yt-t">▶ YouTube video linked</div><div class="yt-s">Reading what I can about it…</div></div>`;
-      box.appendChild(chip);
-      const info = await ytLookup(latest.id, latest.url);
-      if(currentId !== latest.id) return; // a newer video was added meanwhile
-      chip.querySelector('.yt-t').textContent = info.title ? `▶ ${info.title}` : '▶ YouTube video linked';
-      chip.querySelector('.yt-s').textContent = info.transcript
-        ? `Captions found. Questions come only from this video.`
-        : info.about ? `Read the video's description and topics. Questions come only from this video.`
-        : info.title ? `Questions come from this video's topic.`
-        : `Couldn't read this video from here. Paste its transcript or your notes.`;
-      if(!info.title && !info.transcript && !info.about) return;
-      ta.value = ta.value.replace(YT_NOTE_RE, '') + `\n\n[YouTube video${info.title ? ': ' + info.title : ''}${info.author ? ' — ' + info.author : ''}]` + ((info.transcript || info.about) ? `\n${info.transcript ? 'Transcript' : 'Video details'}:\n${[info.transcript, info.transcript ? '' : info.about].filter(Boolean).join(' ').replace(/\s+/g, ' ')}` : '') + `\n[end of video]`;
-    }
-    ta.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(scan, 600); });
-    ta.addEventListener('paste', () => { setTimeout(scan, 80); });
-  }
-  // Standalone copies (opened as a plain file or hosted elsewhere) can use an API key
-  // instead of the on-device model. The key stays in this browser only.
-  (function(){
-    if(IS_HOSTED_ENV || hasHostRuntime() || BUILT_IN_GEMINI_KEY || AI_PROXY_URL) return;
-    [['generateBtn','apiKeyQuiz'], ['flashGenerateBtn','apiKeyFlash']].forEach(([btnId, id]) => {
-      const btn = $(btnId); if(!btn) return;
-      const d = document.createElement('details');
-      d.style.cssText = 'margin-top:10px; font-size:12.5px; color:var(--text-dim);';
-      d.innerHTML = `<summary style="cursor:pointer;">Use a free AI key (Gemini)</summary>
-        <div style="margin-top:8px; line-height:1.5;">Get a free <b>Gemini</b> key in a minute at aistudio.google.com/apikey.</div>
-        <div style="display:flex; gap:8px; margin-top:8px;"><input type="password" id="${id}" placeholder="AIza… (Gemini)" style="flex:1;">
-        <button type="button" class="btn btn-ghost" style="width:auto; padding:8px 14px; font-size:13px;" id="${id}Save">Save</button></div>
-        <div style="margin-top:6px; color:var(--text-faint);">Stored only in this browser and sent only to the provider you choose (Google). Gemini's free tier has daily limits, and Google may use free-tier content to improve its products.</div>`;
-      btn.insertAdjacentElement('afterend', d);
-      const inp = d.querySelector('input'); inp.value = getUserKey();
-      d.querySelector('button').addEventListener('click', () => {
-        try{ if(inp.value.trim()) localStorage.setItem('studydeck_api_key', inp.value.replace(/\s+/g,'')); else localStorage.removeItem('studydeck_api_key'); }catch(e){}
-        d.open = false; toast(inp.value.trim() ? 'Key saved.' : 'Key removed.');
-      });
-    });
-  })();
-  // Optional: download the on-device model while online so it is ready when the internet drops.
-  (function(){
-    return; // online only: no offline model download
-    [['generateBtn','offlineQuiz'], ['flashGenerateBtn','offlineFlash']].forEach(([btnId, id]) => {
-      const btn = $(btnId); if(!btn) return;
-      const d = document.createElement('div');
-      d.style.cssText = 'margin-top:10px; font-size:12.5px; color:var(--text-dim);';
-      d.innerHTML = `<span id="${id}Txt">Works online first. For offline backup, you can download a small model once (~400MB).</span>
-        <button type="button" class="btn btn-ghost" style="width:auto; padding:6px 12px; font-size:12.5px; margin-left:6px;" id="${id}Btn">Get offline backup</button>`;
-      btn.insertAdjacentElement('afterend', d);
-      const b = d.querySelector('button'), t = d.querySelector('span');
-      b.addEventListener('click', async () => {
-        b.disabled = true; t.textContent = 'Downloading offline backup… 0%';
-        try{
-          await loadWebLLMEngine((r) => { t.textContent = 'Downloading offline backup… ' + Math.round((r.progress || 0) * 100) + '%'; });
-          webllmState = 'ready'; t.textContent = 'Offline backup is ready — it takes over automatically when you have no internet.'; b.style.display = 'none';
-        }catch(e){ console.warn('offline model download failed', e); t.textContent = "Couldn't download it just now — try again when your connection is steady."; b.disabled = false; }
-      });
-    });
-  })();
-
-
 
   /* ===================== Input polish: link rows, topic chips, rotating hints, styled dropdowns ===================== */
   (function wireInputPolish(){
@@ -3795,7 +3585,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
       });
     });
     const HINTS = {
-      genInput: ["Paste your biology notes on cell division…", "Drop in a textbook paragraph…", "Paste a YouTube link and quiz yourself on it…"],
+      genInput: ["Paste your biology notes on cell division…", "Drop in a textbook paragraph…", "Type or paste anything you want to learn…"],
       flashInput: ["Paste your vocabulary list…", "Key dates, formulas, definitions…", "Paste a website link to make cards from it…"],
       planInput: ["Cell division, photosynthesis, genetics…", "Chapters 4 to 9 of your textbook…", "Paste your syllabus…"]
     };
@@ -4054,7 +3844,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     const out = [], seen = {};
     (String(text).match(/https?:\/\/[^\s<>"')]+/gi) || []).forEach(u => {
       u = u.replace(/[.,;:!?]+$/, '');
-      if(ytIdFrom(u) || /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(u)) return;
+      if(/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(u)) return;
       if(!seen[u]){ seen[u] = 1; out.push(u); }
     });
     return out;
@@ -4115,10 +3905,8 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   }
   wireWebsites('genInput', 'genFileChip');
   wireWebsites('flashInput', 'flashFileChip');
-  wireYouTube('genInput', 'genFileChip');
-  wireYouTube('flashInput', 'flashFileChip');
-  wireWebsites('genLinkTa', 'genTryRow'); wireYouTube('genLinkTa', 'genTryRow');
-  wireWebsites('flashLinkTa', 'flashTryRow'); wireYouTube('flashLinkTa', 'flashTryRow');
+  wireWebsites('genLinkTa', 'genTryRow');
+  wireWebsites('flashLinkTa', 'flashTryRow');
 
   /* ===================== Drag & drop (files, Google Images, links) ===================== */
   (function(){
@@ -4341,7 +4129,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   // Shows a short, readable reason when the cloud key (Gemini/Anthropic) is the problem; otherwise stays quiet.
   function genErrorCard(){
     const le = String(generateToCount.lastError || '');
-    if(!/|Gemini|API key|not accepted/i.test(le)) return '';
+    if(!/Groq|Gemini|API key|not accepted/i.test(le)) return '';
     return '<div class="card">' + escapeHtml(le.replace(/^API error \(HTTP \d+\):\s*/, '')) + '</div>';
   }
   async function generateToCount({ count, batchSize, concurrency, makeBatch, filter, onProgress, keyOf }){
@@ -4352,7 +4140,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     let idle = 0;
     await asyncLoop(40, async (round) => {
       if(!(items.length < count && idle < 6)) return true;
-      if(items.length === 0 && idle >= 1 && /key was not accepted|invalid x-api-key|authentication|free (?:|Gemini) key is needed/i.test(String(generateToCount.lastError || ''))) return true; // bad key: stop and say so
+      if(items.length === 0 && idle >= 1 && /key was not accepted|invalid x-api-key|authentication|free (?:Groq|Gemini) key is needed/i.test(String(generateToCount.lastError || ''))) return true; // bad key: stop and say so
       if(idle > 0) await sleep(Math.min(8000, 1000 * Math.pow(2, idle - 1)));
       const need = count - items.length;
       // ask for a few extra on top-up rounds to absorb duplicates/invalid items
@@ -4387,9 +4175,20 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   const IQ_STOP = new Set('the a an and or but if then of to in on at for with by from as is are was were be been being this that these those it its into than which who whom whose what when where why how not no nor so such can could may might will would shall should do does did has have had also more most other some any each both few many much own same very just about over after before between during under again further once only there here their they them he she his her you your we our i me my'.split(' '));
   function iqRand(n){ return Math.floor(Math.random() * n); }
   function iqSentences(text){
-    return String(text || '').replace(/\[(?:YouTube video|Website)[^\]]*\]/gi, ' ')
+    return String(text || '').replace(/\[Website[^\]]*\]/gi, ' ')
       .split(/(?<=[.!?。！？])\s+|\n+/).map(s => s.replace(/^[\s\-•*\d.)]+/, '').replace(/\s+/g, ' ').trim())
       .filter(s => { const w = s.split(' ').length; return s.length >= 30 && s.length <= 260 && w >= 5 && w <= 42; });
+  }
+  // Paragraphs in the notes box are separate points. Blank lines split them; if there are none,
+  // several long lines (one point per line) count too. Short lines (vocab lists) stay together.
+  function iqParagraphs(text){
+    const t = String(text || '').replace(/\[Website[^\]]*\]/gi, ' ');
+    let blocks = t.split(/\n\s*\n+/).map(b => b.trim()).filter(Boolean);
+    if(blocks.length < 2){
+      const lines = t.split(/\n+/).map(b => b.trim()).filter(Boolean);
+      if(lines.length >= 2 && lines.every(l => l.length >= 40)) blocks = lines;
+    }
+    return blocks.length >= 2 ? blocks : [];
   }
   function iqTokens(s){
     const out = [], re = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu; let m;
@@ -4473,6 +4272,24 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
       const m = /^\s*[-•*\d.)\s]*([^:–—\-=]{1,60}?)\s*(?::|–|—| - |=|→)\s*(.{3,240})$/.exec(line);
       if(m) add(m[1].trim(), m[2].trim());
     });
+    // 1b) paragraphs are separate points: one card per paragraph, in order
+    const paras = iqParagraphs(text);
+    const paraItems = paras.map(b => iqPrepare(b).items);
+    paras.forEach((b, bi) => {
+      const items = paraItems[bi]; if(!items.length) return;
+      const x = items[0];
+      let m = /^(.{2,60}?)\s+(?:is|are|means|refers to|is defined as|are defined as)\s+(.{8,})$/i.exec(x.s);
+      if(m) return add(iqCap(m[1].replace(/^(the|a|an)\s+/i, '').trim()), iqCap(m[2].replace(/[.!?]+$/, '').trim()));
+      m = /^(.{12,90}?)(?:,|;| because | which | when | while | so that | in order to )\s*(.{12,})$/i.exec(x.s);
+      if(m) return add(iqCap(m[1].trim()), iqCap(m[2].replace(/[.!?]+$/, '').trim()));
+      add(iqCap(x.cands.slice(0, 2).map(c => c.w).join(' · ')), items.slice(0, 2).map(i => i.s).join(' '));
+    });
+    // with several points, extra cards cycle through the paragraphs so no point is skipped
+    if(paras.length && cards.length < count){
+      for(let r = 1; r < 6 && cards.length < count; r++){
+        paraItems.forEach(items => { const x = items[r]; if(x && cards.length < count) add(iqCap(x.cands.slice(0, 2).map(c => c.w).join(' · ')), x.s); });
+      }
+    }
     const prep = iqPrepare(text);
     // 2) "X is / means Y" sentences -> X on the front, Y on the back
     prep.items.forEach(x => {
@@ -4494,6 +4311,17 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   }
   // Simplify & explain without AI: the most important sentences, key terms, and a takeaway.
   function instantExplain(text){
+    const paras = iqParagraphs(text);
+    if(paras.length){
+      const short0 = s => s.length > 150 ? s.slice(0, 147).replace(/\s+\S*$/, '') + '…' : s;
+      const sections = [], takeaways = [];
+      paras.forEach((b, i) => {
+        const one = instantExplain.single(b); if(!one) return;
+        sections.push('### Point ' + (sections.length + 1) + '\n' + one.main.map(x => '- ' + short0(x)).join('\n') + (one.term && !one.main.includes(one.term.s) ? '\n- **' + one.term.w + '**: ' + short0(one.term.s) : ''));
+        takeaways.push('- ' + short0(one.main[0]));
+      });
+      if(sections.length) return sections.join('\n\n') + '\n\nKey takeaways:\n' + takeaways.join('\n');
+    }
     const sents = iqSentences(text);
     if(!sents.length) return '';
     const freq = {};
@@ -4509,6 +4337,16 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     out += '\n\nKey takeaways: ' + short(top[0].s);
     return out;
   }
+  // one paragraph -> its 2 most important sentences and its top key term
+  instantExplain.single = function(block){
+    const sents = iqSentences(block); if(!sents.length) return null;
+    const freq = {};
+    sents.forEach(s => iqTokens(s).forEach(t => { const k = t.w.toLowerCase(); if(!IQ_STOP.has(k) && k.length > 3) freq[k] = (freq[k] || 0) + 1; }));
+    const scored = sents.map((s, i) => ({ s, i, sc: iqTokens(s).reduce((a, t) => a + (freq[t.w.toLowerCase()] || 0), 0) / Math.sqrt(s.split(' ').length) }));
+    const top = scored.slice().sort((a, b) => b.sc - a.sc).slice(0, Math.min(2, sents.length)).sort((a, b) => a.i - b.i).map(x => x.s);
+    const k = Object.keys(freq).sort((a, b) => freq[b] - freq[a] || b.length - a.length)[0];
+    return { main: top, term: k ? { w: k, s: sents.find(x => x.toLowerCase().indexOf(k) >= 0) } : null };
+  };
   const INSTANT_NOTE = 'Instant mode: built straight from your notes. Add a free AI key for smarter questions.';
   const INSTANT_SHORT = '<div class="card">Instant mode needs a few full sentences to work from. Paste a longer paragraph of notes and try again.</div>';
 
@@ -4520,7 +4358,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   // and the browser is online. The on-device model is the backup when it isn't.
   let forceLocalNext = false;
   function cloudAvailable(){ return IS_HOSTED_ENV || hasHostRuntime() || !!getStoredApiKey() || !!AI_PROXY_URL; }
-  // Online only: the cloud AI is always used (the hosting runtime's AI, or your Gemini key).
+  // Online only: the cloud AI is always used (the hosting runtime's AI, or your Groq/Gemini key).
   const ONLINE_ONLY = true;
   function useLocalModel(){
     forceLocalNext = false;
@@ -4533,7 +4371,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   // A bare link with nothing readable behind it can't be turned into questions. Ask for a few words instead of failing.
   function linkOnlyNeedsContext(text){
     const t = String(text || '');
-    if(/\[YouTube video|\[Website:/.test(t)) return false;
+    if(/\[Website:/.test(t)) return false;
     if(!/(?:https?:\/\/|www\.)\S+/i.test(t)) return false;
     const rest = t.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim();
     return rest.length < 6;
@@ -4558,7 +4396,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     const headers = { "Content-Type": "application/json" };
     if(!IS_HOSTED_ENV && !hasHostRuntime()){
       const key = getStoredApiKey();
-      if(!key && !AI_PROXY_URL) throw new Error("A free key is needed to generate online. Open \"Use a free AI key\" under the Generate button and paste one.");
+      if(!key && !AI_PROXY_URL) throw new Error("A free Groq key is needed to generate online. Open \"Use a free AI key\" under the Generate button and paste one (get it at console.groq.com/keys).");
       if(key) headers["x-api-key"] = key;
       headers["anthropic-version"] = "2023-06-01";
       headers["anthropic-dangerous-direct-browser-access"] = "true";
@@ -4632,7 +4470,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     let topicText = ($('genInput').value + '\n\n' + (($('genLinkTa') || {}).value || '')).trim();
     if(!topicText && !quizAttachedImage){ nudge($('genInput')); return; }
     if(!quizAttachedImage && linkOnlyNeedsContext(topicText)){ const _h = urlHint(topicText); if(_h){ topicText = topicText + '\n\nTopic from the link address: ' + _h; } else { $('genStatus').innerHTML = NEED_CONTEXT_MSG; nudge($('genInput')); return; } }
-    if(!/\[YouTube video|\[Website:/.test(topicText)) topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim();
+    if(!/\[Website:/.test(topicText)) topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim();
 
     let count = parseInt($('genCount').value, 10);
     if(!count || count < 1) count = 5;
@@ -4819,17 +4657,12 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     </div>`;
   }
 
-  /* ===================== USER MEDIA: images, YouTube, source links ===================== */
-  // Shared by flashcards and quiz questions -- both can carry an optional {image, youtubeId,
+  /* ===================== USER MEDIA: images, source links ===================== */
+  // Shared by flashcards and quiz questions -- both can carry an optional {image,
   // sourceUrl, sourceLabel}. Images are either a pasted http(s) URL or a data: URI from a
-  // local file upload (kept inline since this app has no server to upload to); YouTube links
+  // local file upload (kept inline since this app has no server to upload to);
   // are reduced to just the video id and re-embedded; source links are validated to http(s)
   // only so a pasted "javascript:" URL can never end up as a clickable link.
-  function extractYouTubeId(url){
-    if(!url) return null;
-    const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
-    return m ? m[1] : null;
-  }
   function safeUrl(url){
     if(!url) return '';
     try{
@@ -4851,11 +4684,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     if(imgSrc){
       parts.push(`<img src="${imgSrc}" alt="" style="width:100%; max-height:220px; object-fit:cover; border-radius:12px; margin-bottom:10px; display:block;">`);
     }
-    if(item.youtubeId){
-      parts.push(`<div style="position:relative; padding-bottom:56.25%; height:0; border-radius:12px; overflow:hidden; margin-bottom:10px; background:#000;">
-        <iframe src="https://www.youtube.com/embed/${item.youtubeId}" style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-      </div>`);
-    }
     const srcHref = safeUrl(item.sourceUrl);
     if(srcHref){
       parts.push(`<a href="${srcHref}" target="_blank" rel="noopener noreferrer" class="hint" style="display:inline-block; margin-bottom:10px; color:var(--accent); text-decoration:underline;">🔗 ${escapeHtml(item.sourceLabel || item.sourceUrl)}</a>`);
@@ -4873,8 +4701,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
           <input type="text" id="${idPrefix}ImageUrl" placeholder="https://..." value="${escapeHtml(showUrlVal)}"></div>
         <div class="field"><label class="field-label">Or upload an image</label>
           <input type="file" accept="image/*" id="${idPrefix}ImageFile"></div>
-        <div class="field"><label class="field-label">YouTube link</label>
-          <input type="text" id="${idPrefix}Youtube" placeholder="https://youtube.com/watch?v=..." value="${existing.youtubeId ? `https://youtu.be/${existing.youtubeId}` : ''}"></div>
         <div class="field"><label class="field-label">Source link</label>
           <input type="text" id="${idPrefix}SourceUrl" placeholder="https://..." value="${escapeHtml(existing.sourceUrl || '')}"></div>
         <div class="field"><label class="field-label">Source label (optional)</label>
@@ -4903,11 +4729,9 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     }else if(urlVal){
       image = urlVal;
     }
-    const ytVal = ($(idPrefix+'Youtube').value || '').trim();
-    const youtubeId = ytVal ? extractYouTubeId(ytVal) : (existing.youtubeId || null);
     const sourceUrl = ($(idPrefix+'SourceUrl').value || '').trim() || null;
     const sourceLabel = ($(idPrefix+'SourceLabel').value || '').trim() || null;
-    return { image, youtubeId, sourceUrl, sourceLabel };
+    return { image, sourceUrl, sourceLabel };
   }
 
   const CORE_SVG = `<svg viewBox="0 0 160 160">
@@ -5241,7 +5065,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
       </div>
       <div class="card">
         <h2>Attach media <span style="color:var(--text-faint); font-weight:400; font-size:13px;">optional</span></h2>
-        <p class="hint">Add a picture, YouTube video, or source link to any question -- shown while playing.</p>
+        <p class="hint">Add a picture or source link to any question -- shown while playing.</p>
         <div id="quizMediaList"></div>
       </div>`;
     $('playBtn').addEventListener('click', ()=>{ currentQuiz.started = true; openGameOverlay(); });
@@ -5268,7 +5092,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
       <div class="deck-row">
         <div class="deck-row-info">
           <div class="deck-row-title">${i+1}. ${escapeHtml((qq.question||'').slice(0,60))}</div>
-          <div class="deck-row-sub">${qq.image?'🖼 image ':''}${qq.youtubeId?'▶ video ':''}${qq.sourceUrl?'🔗 source':''}</div>
+          <div class="deck-row-sub">${qq.image?'🖼 image ':''}${qq.sourceUrl?'🔗 source':''}</div>
         </div>
         <div class="deck-row-actions">
           <button class="btn btn-ghost btn-sm quiz-media-edit-btn" data-qi="${i}">📎 Edit</button>
@@ -5504,7 +5328,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     const trophy = isNewHighScore ? TROPHY_GOLD : TROPHY_SILVER;
     const prevBest = highScore;
     if(isNewHighScore) saveHighScore(q.score);
-    if(!q.isReviewSession) submitMpScore(q.topic, q.score); // review sessions aren't "quizzes" -- keep them off the leaderboard
     renderReviewCard();
 
     if(isNewHighScore) playVictoryFanfare();
@@ -5703,252 +5526,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     }catch(e){ toast('That shared link could not be opened.'); }
   })();
 
-  /* ===================== MULTIPLAYER ===================== */
-  let mpOverlayEl = null;
-
-  function openMpOverlay(){
-    if(mpOverlayEl) return;
-    mpOverlayEl = document.createElement('div');
-    mpOverlayEl.className = 'game-overlay';
-    mpOverlayEl.innerHTML = `
-      <div class="overlay-bg">
-        ${NEURAL_SVG}
-      </div>
-      <button class="overlay-exit" id="mpOverlayExit">✕</button>
-      <div class="overlay-content" id="mpOverlayContent"></div>`;
-    document.body.appendChild(mpOverlayEl);
-    document.body.style.overflow = 'hidden';
-    $('mpOverlayExit').addEventListener('click', ()=>{ $('mpLeaveBtn').click(); });
-  }
-
-  function closeMpOverlay(){
-    if(mpOverlayEl){ mpOverlayEl.remove(); mpOverlayEl = null; }
-    document.body.style.overflow = '';
-  }
-
-  // Gameplay screens (lobby/question/reveal/final) render into the fullscreen overlay,
-  // matching solo's experience. Setup screens (join room, generate/build the quiz) stay
-  // inline in the Quiz Generator tab, same as solo's pre-Play state.
-  function mpArea(){
-    openMpOverlay();
-    return $('mpOverlayContent');
-  }
-
-  const ROOM_WORDS = ['FROGS','TIGERS','COMETS','PIXELS','ROCKET','WIZARD','DRAGON','PANDAS','NINJAS','FALCON'];
-
-  function genRoomCode(){
-    const word = ROOM_WORDS[Math.floor(Math.random()*ROOM_WORDS.length)];
-    const num = Math.floor(10 + Math.random()*90);
-    return word + num;
-  }
-
-  async function loadMpState(){
-    // sessionStorage is deliberately used here (not localStorage/appStorage) so each
-    // browser tab gets its own independent player identity -- opening this link in a
-    // second tab should feel like a different person joining, not the same one twice.
-    try{ mpPlayerId = sessionStorage.getItem('studydeck_mp_player_id') || uid(); sessionStorage.setItem('studydeck_mp_player_id', mpPlayerId); }catch(e){ mpPlayerId = uid(); }
-    try{ mpName = sessionStorage.getItem('studydeck_mp_name') || ''; }catch(e){ mpName = ''; }
-    if(mpName) $('mpName').value = mpName;
-
-    if(!IS_HOSTED_ENV) return; // standalone/P2P rooms aren't auto-rejoined on reload
-
-    try{
-      mpRoomCode = sessionStorage.getItem('studydeck_mp_room') || null;
-    }catch(e){ mpRoomCode = null; }
-    if(mpRoomCode) enterRoomView();
-  }
-
-  function enterRoomView(){
-    $('mpJoinCard').style.display = 'none';
-    $('mpRoomCard').style.display = 'block';
-    $('mpLiveCard').style.display = 'block';
-    $('mpRoomLabel').textContent = mpRoomCode;
-    if(IS_HOSTED_ENV){
-      $('mpLeaderboardLabel').style.display = 'block';
-      renderMpLeaderboard();
-      joinLiveRoster();
-      startLivePolling();
-    }else{
-      $('mpLeaderboardLabel').style.display = 'none';
-      $('mpLeaderboard').innerHTML = '';
-      startP2PTick();
-    }
-  }
-
-  $('mpCreateBtn').addEventListener('click', async ()=>{
-    const name = $('mpName').value.trim();
-    if(!name){ toast('Enter your name first.'); return; }
-    const code = genRoomCode();
-    $('mpRoomInput').value = code;
-    if(IS_HOSTED_ENV){ await joinRoom(name, code); }
-    else{ await p2pCreateRoom(name, code); }
-  });
-
-  $('mpJoinBtn').addEventListener('click', async ()=>{
-    const name = $('mpName').value.trim();
-    const code = $('mpRoomInput').value.trim().toUpperCase();
-    if(!name){ toast('Enter your name first.'); return; }
-    if(!code){ toast('Enter a room code, or tap "Create new room".'); return; }
-    if(IS_HOSTED_ENV){ await joinRoom(name, code); }
-    else{ await p2pJoinRoom(name, code); }
-  });
-
-  async function joinRoom(name, code){
-    mpName = name;
-    mpRoomCode = code;
-    try{ sessionStorage.setItem('studydeck_mp_name', name); sessionStorage.setItem('studydeck_mp_room', code); }catch(e){}
-    toast(`Joined room ${code}.`);
-    enterRoomView();
-  }
-
-  $('mpLeaveBtn').addEventListener('click', async ()=>{
-    closeMpOverlay();
-    if(IS_HOSTED_ENV){
-      stopLivePolling();
-      mpRoomCode = null;
-      try{ sessionStorage.removeItem('studydeck_mp_room'); }catch(e){}
-    }else{
-      p2pTeardown();
-      mpRoomCode = null;
-    }
-    $('mpJoinCard').style.display = 'block';
-    $('mpRoomCard').style.display = 'none';
-    $('mpLiveCard').style.display = 'none';
-    $('mpLeaderboardLabel').style.display = 'none';
-    $('mpLeaderboard').innerHTML = '';
-  });
-
-  /* ---------- Free P2P (WebRTC) multiplayer for outside the hosted app ---------- */
-  let peer = null;
-  let isHost = false;
-  let hostConnections = [];   // host-side: array of open DataConnections to players
-  let hostConn = null;        // peer-side: connection to the host
-  let p2pSession = null;      // {status, topic, questions, waitingSince, startedAt}
-  let p2pRoster = [];         // [{playerId, name}]
-  let p2pScores = {};         // {playerId: {score, streak, bestStreak, correctCount, answers}}
-  let p2pTickTimer = null;
-
-  function freshLiveDoc(){ return { score:0, streak:0, bestStreak:0, correctCount:0, answers:{} }; }
-  function peerIdFor(code){ return 'studydeck-quiz-' + code.toLowerCase(); }
-
-  async function p2pCreateRoom(name, code){
-    mpName = name; mpRoomCode = code; isHost = true;
-    try{ sessionStorage.setItem('studydeck_mp_name', name); }catch(e){}
-    p2pRoster = [{ playerId: mpPlayerId, name, avatar: profile.avatar }];
-    p2pScores = { [mpPlayerId]: freshLiveDoc() };
-    p2pSession = null;
-    toast('Opening room…');
-    try{
-      await new Promise((resolve, reject)=>{
-        peer = new Peer(peerIdFor(code));
-        peer.on('open', ()=> resolve());
-        peer.on('error', err=> reject(err));
-      });
-    }catch(err){
-      console.error(err);
-      console.warn('room open failed', err);
-      return;
-    }
-    peer.on('connection', conn=>{
-      conn.on('data', msg => handleHostMessage(conn, msg));
-      conn.on('open', ()=>{
-        hostConnections.push(conn);
-        conn.send({ type:'state', session:p2pSession, roster:p2pRoster, scores:p2pScores });
-      });
-      conn.on('close', ()=>{ hostConnections = hostConnections.filter(c=>c!==conn); });
-    });
-    toast(`Room ${code} is open.`);
-    enterRoomView();
-  }
-
-  async function p2pJoinRoom(name, code){
-    mpName = name; mpRoomCode = code; isHost = false;
-    try{ sessionStorage.setItem('studydeck_mp_name', name); }catch(e){}
-    toast('Connecting…');
-    try{
-      await new Promise((resolve, reject)=>{
-        peer = new Peer();
-        peer.on('open', ()=> resolve());
-        peer.on('error', err=> reject(err));
-      });
-      hostConn = peer.connect(peerIdFor(code), { reliable:true });
-      await new Promise((resolve, reject)=>{
-        const timer = setTimeout(()=> reject(new Error('timeout')), 9000);
-        hostConn.on('open', ()=>{
-          clearTimeout(timer);
-          hostConn.send({ type:'join', playerId: mpPlayerId, name, avatar: profile.avatar });
-          resolve();
-        });
-        hostConn.on('error', err=>{ clearTimeout(timer); reject(err); });
-      });
-    }catch(err){
-      console.error(err);
-      console.warn('room unreachable');
-      return;
-    }
-    hostConn.on('data', msg => handlePeerMessage(msg));
-    hostConn.on('close', ()=>{ toast('Lost connection to the host.'); });
-    toast(`Joined room ${code}.`);
-    enterRoomView();
-  }
-
-  function p2pTeardown(){
-    stopP2PTick();
-    try{ if(peer) peer.destroy(); }catch(e){}
-    peer = null; hostConn = null; hostConnections = []; isHost = false;
-    p2pSession = null; p2pRoster = []; p2pScores = {};
-  }
-
-  function handleHostMessage(conn, msg){
-    if(msg.type === 'join'){
-      if(!p2pRoster.find(p=>p.playerId === msg.playerId)){
-        p2pRoster.push({ playerId: msg.playerId, name: msg.name, avatar: msg.avatar || '🙂' });
-        p2pScores[msg.playerId] = freshLiveDoc();
-      }
-      p2pBroadcastState();
-    }else if(msg.type === 'answer'){
-      p2pRecordAnswer(msg.playerId, msg.index, msg.oi, msg.timeLeftMs);
-      p2pBroadcastState();
-    }
-  }
-
-  function handlePeerMessage(msg){
-    if(msg.type === 'state'){
-      p2pSession = msg.session;
-      p2pRoster = msg.roster;
-      p2pScores = msg.scores;
-      renderP2PTick();
-    }
-  }
-
-  function p2pBroadcastState(){
-    const payload = { type:'state', session:p2pSession, roster:p2pRoster, scores:p2pScores };
-    hostConnections.forEach(c=>{ try{ c.send(payload); }catch(e){} });
-    renderP2PTick();
-  }
-
-  function p2pRecordAnswer(playerId, index, oi, timeLeftMs){
-    const qq = p2pSession && p2pSession.questions[index];
-    if(!qq) return;
-    const doc = p2pScores[playerId] || freshLiveDoc();
-    if(doc.answers[index] !== undefined) return;
-    const correct = oi === qq.correctIndex;
-    doc.answers[index] = oi;
-    if(correct){
-      doc.streak += 1;
-      if(doc.streak > doc.bestStreak) doc.bestStreak = doc.streak;
-      // faster answers earn a bonus (up to +50), on top of the streak bonus
-      const speedBonus = Math.round((Math.max(0, timeLeftMs||0) / LIVE_QUESTION_MS) * 50);
-      doc.score += 100 + speedBonus + (doc.streak-1)*10;
-      doc.correctCount += 1;
-      if(playerId === mpPlayerId) addCoins(8);
-    }else{
-      doc.streak = 0;
-    }
-    p2pScores[playerId] = doc;
-  }
-
-  /* ---------- Optional in-browser AI (WebLLM) for multiplayer outside the hosted app ---------- */
+  /* ---------- Optional in-browser AI (WebLLM) ---------- */
   const WEBLLM_MODEL = "Qwen2.5-0.5B-Instruct-q4f16_1-MLC"; // small + fast: quicker download and much quicker inference than the 1B model
   const WEBLLM_BATCH_SIZE = 2; // smaller model, smaller batches = faster and more reliable per call
   let webllmModule = null;
@@ -6055,775 +5633,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     const prompt = 'Write ' + count + ' ' + (kind === 'true_false' ? 'true/false' : 'multiple-choice') + ' quiz question' + (count === 1 ? '' : 's') + ' about the TEXT below. Use only facts that appear in the TEXT. ' + (difficulty ? 'Difficulty: ' + difficulty + '. ' : '') + langRule('genLang').replace(/\n/g, ' ') + '\nUse exactly this format for each question and write nothing else:\n' + fmt + '\n\nTEXT:\n' + Q3 + '\n' + localChunk(topicText) + '\n' + Q3;
     return webllmText(prompt, parseLocalQuiz, 700);
   }
-
-  function renderP2PQuizSetup(){
-    if(webllmState === 'ready'){ renderP2PAiGenerateForm(); return; }
-    if(webllmState === 'loading'){ return; } // progress UI already rendering itself
-    if(!webgpuSupported()){
-      webllmState = 'unsupported';
-    }
-    if(webllmState === 'unsupported'){
-      $('mpLiveArea').innerHTML = `
-        <p class="hint">Your browser doesn't support the on-device AI features needed here (this needs WebGPU — try a recent Chrome or Edge). You can still build the quiz by hand instead.</p>
-        <button class="btn btn-teal" id="goManualBtn">Build quiz manually</button>`;
-      $('goManualBtn').addEventListener('click', renderP2PManualBuilder);
-      return;
-    }
-    $('mpLiveArea').innerHTML = `
-      <p class="hint">Generate questions with a small, fast AI model that runs right in this browser tab — free, no signup. First time only: a one-time ~400MB download. After that, it's cached and works without wifi.</p>
-      <button class="btn btn-teal" id="loadAiBtn">Generate with on-device AI</button>
-      <button class="manual-toggle" id="goManualLink" style="margin-top:12px;"><span>Or build the quiz by hand instead</span></button>`;
-    $('loadAiBtn').addEventListener('click', startWebLLMLoad);
-    $('goManualLink').addEventListener('click', renderP2PManualBuilder);
-  }
-
-  async function startWebLLMLoad(){
-    webllmState = 'loading';
-    $('mpLiveArea').innerHTML = `
-      <p class="hint">Downloading and loading a small on-device model — usually under a minute on decent wifi the first time, then it's cached and works without wifi from then on.</p>
-      <div class="bar-track" style="margin-bottom:8px;"><div class="bar-fill" id="webllmProgressFill" style="width:0%; background:var(--accent);"></div></div>
-      <div class="hint" id="webllmProgressText" style="margin:0;">Starting…</div>
-      <button class="manual-toggle" id="goManualLink2" style="margin-top:12px;"><span>Cancel and build manually instead</span></button>`;
-    $('goManualLink2').addEventListener('click', ()=>{ webllmState = 'idle'; renderP2PManualBuilder(); });
-    try{
-      await loadWebLLMEngine((report)=>{
-        const pct = Math.round((report.progress || 0) * 100);
-        const fill = $('webllmProgressFill'); if(fill) fill.style.width = pct + '%';
-        const txt = $('webllmProgressText'); if(txt) txt.textContent = report.text || (pct + '%');
-      });
-      webllmState = 'ready';
-      toast('On-device AI ready.');
-      renderP2PAiGenerateForm();
-    }catch(err){
-      console.error(err);
-      webllmState = 'error';
-      $('mpLiveArea').innerHTML = `
-        <p class="hint">Build the quiz by hand while you wait for a connection.</p>
-        <button class="btn btn-teal" id="goManualBtn3">Build quiz manually</button>`;
-      $('goManualBtn3').addEventListener('click', renderP2PManualBuilder);
-    }
-  }
-
-  function renderP2PAiGenerateForm(){
-    $('mpLiveArea').innerHTML = `
-      <p class="hint">On-device AI is ready. Uses your notes, question count, type, and difficulty set above (kept small for speed/reliability on a local model).</p>
-      <button class="btn btn-teal" id="aiGenStartBtn">Generate & start match</button>
-      <button class="manual-toggle" id="goManualLink3" style="margin-top:12px;"><span>Or build the quiz by hand instead</span></button>
-      <div id="aiGenStatus" style="margin-top:10px;"></div>`;
-    $('aiGenStartBtn').addEventListener('click', webllmGenerateAndStart);
-    $('goManualLink3').addEventListener('click', renderP2PManualBuilder);
-  }
-
-  async function webllmGenerateAndStart(){
-    const topic = $('genInput').value.trim();
-    if(!topic){ toast('Add your notes in the field above first.'); return; }
-    let count = parseInt($('genCount').value, 10) || 6;
-    if(count > 10) count = 10; // local models are slower and less reliable at larger counts
-    if(count < 1) count = 4;
-    const type = $('genType').value;
-    const difficulty = $('genDifficulty').value;
-    $('aiGenStartBtn').disabled = true;
-    $('aiGenStartBtn').innerHTML = `<span class="spinner" style="border-color:rgba(35,20,0,0.3); border-top-color:#231400;"></span>Generating…`;
-    $('aiGenStatus').innerHTML = `Thinking on-device — this can take a little longer than cloud AI…`;
-    try{
-      let allQuestions = [];
-      let idleP2 = 0;
-      for(let b=0; b<Math.ceil(count / WEBLLM_BATCH_SIZE) + 8 && allQuestions.length < count && idleP2 < 3; b++){
-        const thisBatch = Math.min(WEBLLM_BATCH_SIZE, count - allQuestions.length);
-        const beforeP2 = allQuestions.length;
-        $('aiGenStatus').innerHTML = `Thinking on-device… (${allQuestions.length}/${count} questions so far)`;
-        let batchQs = null;
-        for(let attempt=1; attempt<=2; attempt++){
-          try{ batchQs = await webllmGenerateBatch(topic, thisBatch, type, difficulty); break; }
-          catch(e){ console.error('WebLLM batch attempt failed:', e); }
-        }
-        if(batchQs) allQuestions = dedupeByKey(allQuestions.concat(filterValidQuestions(batchQs)), x => normKey(x.question));
-        idleP2 = allQuestions.length === beforeP2 ? idleP2 + 1 : 0;
-      }
-      allQuestions = allQuestions.slice(0, count);
-      if(allQuestions.length === 0) throw new Error('The on-device model could not produce usable questions — try shorter notes, or build manually.');
-      p2pSession = { status:'waiting', topic: topic.slice(0,80), questions: allQuestions, waitingSince: Date.now(), startedAt: null };
-      p2pScores[mpPlayerId] = freshLiveDoc();
-      liveLastRenderedKey = null;
-      toast('Live match starting!');
-      p2pBroadcastState();
-    }catch(err){
-      console.error(err);
-      const statusEl = $('aiGenStatus');
-      if(statusEl) statusEl.innerHTML = '';
-    }finally{
-      const btn = $('aiGenStartBtn');
-      if(btn){ btn.disabled = false; btn.textContent = 'Generate & start match'; }
-    }
-  }
-
-  let p2pManualQuestions = [];
-
-  function renderP2PManualBuilder(){
-    $('mpLiveArea').innerHTML = `
-      <p class="hint">Build the quiz by hand instead — add a few questions, then start. Everyone in the room answers together once you hit start.</p>
-      <div class="field"><label class="field-label">Question</label><input type="text" id="manQText" placeholder="e.g. What is the capital of France?"></div>
-      <div class="row2">
-        <div class="field"><label class="field-label">Option A (correct)</label><input type="text" id="manQOptA"></div>
-        <div class="field"><label class="field-label">Option B</label><input type="text" id="manQOptB"></div>
-      </div>
-      <div class="row2">
-        <div class="field"><label class="field-label">Option C (optional)</label><input type="text" id="manQOptC"></div>
-        <div class="field"><label class="field-label">Option D (optional)</label><input type="text" id="manQOptD"></div>
-      </div>
-      <div class="field"><label class="field-label">Correct answer</label>
-        <select id="manQCorrect"><option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option></select>
-      </div>
-      <button class="btn btn-ghost" id="manQAddBtn">Add question</button>
-      <div id="manQList" style="margin-top:12px;"></div>
-      <button class="btn btn-teal" id="manQStartBtn" style="margin-top:12px;" disabled>Add at least 1 question to start</button>`;
-
-    $('manQAddBtn').addEventListener('click', addManualQuestion);
-    $('manQStartBtn').addEventListener('click', startManualMatch);
-    renderManualQuestionList();
-  }
-
-  function addManualQuestion(){
-    const text = $('manQText').value.trim();
-    const rawOpts = [$('manQOptA').value.trim(), $('manQOptB').value.trim(), $('manQOptC').value.trim(), $('manQOptD').value.trim()];
-    const correctRaw = parseInt($('manQCorrect').value, 10);
-    if(!text){ toast('Enter a question.'); return; }
-    if(!rawOpts[0] || !rawOpts[1]){ toast('Fill in at least options A and B.'); return; }
-    if(!rawOpts[correctRaw]){ toast('The correct answer option is empty — fill it in or pick a different correct answer.'); return; }
-    // filter out empty trailing options while preserving the correct index
-    const options = [];
-    let correctIndex = -1;
-    rawOpts.forEach((opt, i) => {
-      if(opt){ if(i === correctRaw) correctIndex = options.length; options.push(opt); }
-    });
-    p2pManualQuestions.push({ question: text, options, correctIndex, explanation: '' });
-    $('manQText').value = ''; $('manQOptA').value = ''; $('manQOptB').value = ''; $('manQOptC').value = ''; $('manQOptD').value = '';
-    $('manQCorrect').value = '0';
-    renderManualQuestionList();
-    toast('Question added.');
-  }
-
-  function renderManualQuestionList(){
-    const list = $('manQList');
-    const startBtn = $('manQStartBtn');
-    if(p2pManualQuestions.length === 0){
-      list.innerHTML = '<div class="empty">No questions added yet.</div>';
-    }else{
-      list.innerHTML = p2pManualQuestions.map((q,i) => `
-        <div class="mp-row">
-          <div class="mp-rank">${i+1}</div>
-          <div style="flex:1; min-width:0;"><div class="mp-name">${escapeHtml(q.question)}</div><div class="mp-meta">${q.options.length} options</div></div>
-          <button class="icon-btn" data-i="${i}" style="background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:16px;">✕</button>
-        </div>`).join('');
-      list.querySelectorAll('button[data-i]').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          p2pManualQuestions.splice(parseInt(btn.dataset.i,10), 1);
-          renderManualQuestionList();
-        });
-      });
-    }
-    startBtn.disabled = p2pManualQuestions.length === 0;
-    startBtn.textContent = p2pManualQuestions.length === 0 ? 'Add at least 1 question to start' : `Start match (${p2pManualQuestions.length} question${p2pManualQuestions.length===1?'':'s'})`;
-  }
-
-  function startManualMatch(){
-    if(p2pManualQuestions.length === 0) return;
-    const topic = $('genInput').value.trim() || 'Live quiz';
-    p2pSession = { status:'waiting', topic: topic.slice(0,80), questions: p2pManualQuestions, waitingSince: Date.now(), startedAt: null };
-    p2pScores[mpPlayerId] = freshLiveDoc();
-    p2pManualQuestions = [];
-    liveLastRenderedKey = null;
-    toast('Live match starting!');
-    p2pBroadcastState();
-  }
-
-  function startP2PTick(){
-    if(p2pTickTimer) return; // already ticking -- avoid resetting a working interval
-    renderP2PTick();
-    p2pTickTimer = setInterval(renderP2PTick, 1000);
-  }
-  function stopP2PTick(){
-    if(p2pTickTimer){ clearInterval(p2pTickTimer); p2pTickTimer = null; }
-  }
-
-  function renderP2PTick(){
-    if(!isMultiModeActive()) return;
-    if(!p2pSession){
-      closeMpOverlay();
-      if(isHost) renderLiveStartForm();
-      else renderP2PWaitingForHost();
-      return;
-    }
-    const phaseInfo = computeLivePhase(p2pSession);
-    if(isHost && p2pSession.status === 'waiting' && phaseInfo.phase === 'question'){
-      p2pSession.status = 'active';
-      p2pSession.startedAt = phaseInfo.derivedStart;
-      p2pBroadcastState();
-      return; // p2pBroadcastState() re-renders with the updated session
-    }
-    if(phaseInfo.phase === 'lobby'){
-      renderLiveLobby(p2pSession, phaseInfo.secondsLeft);
-    }else if(phaseInfo.phase === 'question'){
-      renderP2PQuestion(phaseInfo.index, phaseInfo.timeLeftMs);
-    }else if(phaseInfo.phase === 'reveal'){
-      renderP2PReveal(phaseInfo.index);
-    }else if(phaseInfo.phase === 'finished'){
-      renderP2PFinal();
-    }
-  }
-
-  function renderP2PWaitingForHost(){
-    const key = 'p2p-waiting';
-    if(liveLastRenderedKey === key) return;
-    liveLastRenderedKey = key;
-    $('mpLiveArea').innerHTML = `<p class="hint">Waiting for the room host to start a live match — stay on this tab and it'll begin automatically.</p>`;
-  }
-
-  let p2pQuestionTimeLeftMs = 0; // tracked so submitP2PAnswer knows how much time was left at click time
-
-  function renderP2PQuestion(index, timeLeftMs){
-    p2pQuestionTimeLeftMs = timeLeftMs;
-    const myDoc = p2pScores[mpPlayerId] || freshLiveDoc();
-    const already = myDoc.answers[index] !== undefined;
-    const key = 'q-' + index + (already ? '-answered' : '');
-    const q = p2pSession.questions[index];
-    const secondsLeft = Math.max(0, Math.ceil(timeLeftMs/1000));
-
-    if(liveLastRenderedKey !== key){
-      liveLastRenderedKey = key;
-      if(!already) playSwoosh(); // only on the fresh question, not the re-render after answering it
-      const opts = q.options || [];
-      mpArea().innerHTML = `
-        <div class="glass-card enter question-card-xl" id="mpQuestionCard">
-          <div class="game-header">
-            <div class="hint" style="margin:0;">Question ${index+1} of ${p2pSession.questions.length}</div>
-            <div style="font-family:'Montserrat',sans-serif; font-weight:800; color:${secondsLeft<=5?'var(--red)':'var(--accent)'};" id="mpLiveTimer">${secondsLeft}s</div>
-          </div>
-          ${renderMediaBlockHtml(q)}
-          <div class="game-question">${escapeHtml(q.question)}</div>
-          ${buildAnswerButtonsHtml(opts, already ? 'disabled' : '')}
-          ${already ? `<p class="hint" style="margin-top:14px;">Answer locked in — waiting for the timer...</p>` : ''}
-        </div>`;
-      if(!already){
-        $('mpQuestionCard').querySelectorAll('[data-oi]').forEach(btn=>{
-          btn.addEventListener('click', ()=> submitP2PAnswer(index, parseInt(btn.dataset.oi,10)));
-        });
-      }
-    }else{
-      const timerEl = $('mpLiveTimer');
-      if(timerEl){ timerEl.textContent = secondsLeft + 's'; timerEl.style.color = secondsLeft<=5 ? 'var(--red)' : 'var(--accent)'; }
-    }
-  }
-
-  function submitP2PAnswer(index, oi){
-    document.querySelectorAll('#mpQuestionCard [data-oi]').forEach(b=>b.disabled=true);
-    const myDoc = p2pScores[mpPlayerId] || freshLiveDoc();
-    if(myDoc.answers[index] !== undefined) return;
-    const q = p2pSession.questions[index];
-    const correctAnswerText = (q.options && q.options[q.correctIndex]) || '';
-    if(isHost){
-      p2pRecordAnswer(mpPlayerId, index, oi, p2pQuestionTimeLeftMs);
-      const correct = q.correctIndex === oi;
-      if(correct){ playCorrectSound(); if(mpOverlayEl) spawnConfetti(mpOverlayEl); } else{ playWrongSound(); }
-      showFlash(correct, correctAnswerText, q.explanation, ()=>{});
-      p2pBroadcastState();
-    }else{
-      // optimistic local lock so the UI responds instantly; authoritative score arrives via the host's next state broadcast
-      const doc = p2pScores[mpPlayerId] || freshLiveDoc();
-      doc.answers[index] = oi;
-      p2pScores[mpPlayerId] = doc;
-      const correct = q.correctIndex === oi;
-      if(correct){ playCorrectSound(); if(mpOverlayEl) spawnConfetti(mpOverlayEl); addCoins(8); } else{ playWrongSound(); }
-      showFlash(correct, correctAnswerText, q.explanation, ()=>{});
-      hostConn.send({ type:'answer', playerId: mpPlayerId, index, oi, timeLeftMs: p2pQuestionTimeLeftMs });
-      liveLastRenderedKey = null;
-      renderP2PTick();
-    }
-  }
-
-  function renderP2PReveal(index){
-    const key = 'reveal-' + index;
-    if(liveLastRenderedKey === key) return;
-    liveLastRenderedKey = key;
-    playSwoosh();
-    const q = p2pSession.questions[index];
-    const results = p2pRoster.map(p => {
-      const doc = p2pScores[p.playerId] || freshLiveDoc();
-      return { name: p.name, playerId: p.playerId, avatar: p.avatar, correct: doc.answers[index] === q.correctIndex, score: doc.score };
-    });
-    results.sort((a,b)=> b.score - a.score);
-    mpArea().innerHTML = `
-      <div class="glass-card enter">
-        <div style="text-align:center; margin-bottom:12px;">
-          <div class="hint" style="margin:0 0 4px;">Correct answer</div>
-          <div style="font-weight:700; font-size:16px; color:var(--k-green);">${escapeHtml((q.options||[])[q.correctIndex] || '')}</div>
-        </div>
-        ${renderRaceTrackHtml(results)}
-        <div class="list-label" style="margin-top:6px;">Standings</div>
-        ${results.slice(0,8).map((r,i) => `
-          <div class="mp-row ${r.playerId===mpPlayerId?'me':''}">
-            <div class="mp-rank">${i+1}</div>
-            <div><div class="mp-name">${r.avatar||'🙂'} ${escapeHtml(r.name)}${r.playerId===mpPlayerId?' (you)':''} ${r.correct ? '✓' : ''}</div></div>
-            <div class="mp-score">${r.score}</div>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  function renderP2PFinal(){
-    const key = 'final-' + p2pSession.startedAt;
-    if(liveLastRenderedKey === key) return;
-    liveLastRenderedKey = key;
-    const results = p2pRoster.map(p => {
-      const doc = p2pScores[p.playerId] || freshLiveDoc();
-      return { name: p.name, playerId: p.playerId, avatar: p.avatar, score: doc.score, correctCount: doc.correctCount||0 };
-    });
-    results.sort((a,b)=> b.score - a.score);
-
-    const mine = results.find(r => r.playerId === mpPlayerId);
-    const myScore = mine ? mine.score : 0;
-    const isNewHighScore = myScore > highScore;
-    const trophy = isNewHighScore ? TROPHY_GOLD : TROPHY_SILVER;
-    const prevBest = highScore;
-    if(isNewHighScore) saveHighScore(myScore);
-    if(isNewHighScore) playVictoryFanfare();
-
-    mpArea().innerHTML = `
-      <div class="glass-card enter" id="mpFinalCard">
-        <div style="text-align:center; margin-bottom:6px;">
-          <div class="trophy-wrap spin-in" style="margin:0 auto 6px;">${trophy}</div>
-          <div class="trophy-label ${isNewHighScore ? 'gold' : 'silver'}">${isNewHighScore ? '★ New Personal Best!' : `Your best: ${prevBest}`}</div>
-          <div style="font-family:'Montserrat',sans-serif; font-weight:800; font-size:19px; color:var(--accent);">Match Complete</div>
-          <div class="hint">"${escapeHtml(p2pSession.topic)}"</div>
-        </div>
-        ${renderPodiumHtml(results)}
-        ${results.map((r,i) => `
-          <div class="mp-row ${r.playerId===mpPlayerId?'me':''}">
-            <div class="mp-rank">${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)}</div>
-            <div><div class="mp-name">${r.avatar||'🙂'} ${escapeHtml(r.name)}${r.playerId===mpPlayerId?' (you)':''}</div><div class="mp-meta">${r.correctCount}/${p2pSession.questions.length} correct</div></div>
-            <div class="mp-score">${r.score}</div>
-          </div>`).join('')}
-        ${isHost ? `<button class="btn btn-teal" id="mpLiveAgainBtn" style="margin-top:12px;">Start another live match</button>`
-                 : `<p class="hint" style="margin-top:12px;">Ask the host to start another match when ready.</p>`}
-        <button class="btn btn-ghost" id="mpDoneBtn" style="margin-top:8px;">Done</button>
-      </div>`;
-    const finalCard = $('mpFinalCard');
-    if(finalCard && (isNewHighScore || results[0].playerId === mpPlayerId)) spawnConfetti(finalCard);
-    const againBtn = $('mpLiveAgainBtn');
-    if(againBtn) againBtn.addEventListener('click', ()=>{
-      p2pSession = null;
-      liveLastRenderedKey = null;
-      closeMpOverlay();
-      renderP2PTick();
-    });
-    const doneBtn = $('mpDoneBtn');
-    if(doneBtn) doneBtn.addEventListener('click', closeMpOverlay);
-  }
-
-  async function renderMpLeaderboard(){
-    if(!mpRoomCode) return;
-    let entries = [];
-    try{
-      const r = await appStorage.get('mp_room_' + mpRoomCode, true);
-      entries = r && r.value ? JSON.parse(r.value) : [];
-    }catch(e){ entries = []; }
-    entries.sort((a,b)=> b.score - a.score);
-    const container = $('mpLeaderboard');
-    if(entries.length === 0){
-      container.innerHTML = '<div class="empty">No scores yet — play a quiz from the Quiz Generator tab to post one here.</div>';
-      return;
-    }
-    container.innerHTML = entries.map((e,i) => `
-      <div class="mp-row ${e.playerId === mpPlayerId ? 'me' : ''}">
-        <div class="mp-rank">${i+1}</div>
-        <div>
-          <div class="mp-name">${escapeHtml(e.name)}${e.playerId === mpPlayerId ? ' (you)' : ''}</div>
-          <div class="mp-meta">${escapeHtml(e.topic || '')}</div>
-        </div>
-        <div class="mp-score">${e.score}</div>
-      </div>`).join('');
-  }
-
-  async function submitMpScore(topic, score){
-    if(!IS_HOSTED_ENV || !mpRoomCode || !mpPlayerId) return;
-    try{
-      const r = await appStorage.get('mp_room_' + mpRoomCode, true);
-      let entries = r && r.value ? JSON.parse(r.value) : [];
-      const existing = entries.find(e => e.playerId === mpPlayerId);
-      if(existing){
-        if(score > existing.score){ existing.score = score; existing.topic = topic; existing.date = Date.now(); }
-      }else{
-        entries.push({ playerId: mpPlayerId, name: mpName || 'Player', score, topic, date: Date.now() });
-      }
-      await appStorage.set('mp_room_' + mpRoomCode, JSON.stringify(entries), true);
-      if(isMultiModeActive()) renderMpLeaderboard();
-    }catch(e){ /* non-critical */ }
-  }
-
-  /* ===================== LIVE (SIMULTANEOUS) MATCH ENGINE =====================
-     Design note: instead of a "host" advancing questions, every player's device
-     independently computes which question should be showing *right now* from a
-     single shared start timestamp (session.startedAt) plus a fixed per-question
-     duration. Since that computation is deterministic (same inputs -> same
-     output on every device), there's no coordination race to advance questions —
-     everyone just polls the shared session doc and renders whatever the shared
-     clock says "now" should be. The only real synchronization requirement is
-     that devices' clocks are roughly accurate, which is true for virtually all
-     modern phones/computers (they sync via NTP). */
-  const LIVE_QUESTION_MS = 15000;
-  const LIVE_REVEAL_MS = 5000;
-  const LIVE_LOBBY_MS = 5000;
-  const LIVE_CYCLE_MS = LIVE_QUESTION_MS + LIVE_REVEAL_MS;
-
-  let livePollTimer = null;
-  let liveLastRenderedKey = null; // avoids re-rendering the same phase every poll tick
-
-  function sessionKey(){ return 'live_' + mpRoomCode + '_session'; }
-  function rosterKey(){ return 'live_' + mpRoomCode + '_roster'; }
-  function ansKey(pid){ return 'live_' + mpRoomCode + '_ans_' + pid; }
-
-  async function joinLiveRoster(){
-    if(!mpRoomCode || !mpPlayerId) return;
-    try{
-      const r = await appStorage.get(rosterKey(), true);
-      let roster = r && r.value ? JSON.parse(r.value) : [];
-      if(!roster.find(p => p.playerId === mpPlayerId)){
-        roster.push({ playerId: mpPlayerId, name: mpName || 'Player', avatar: profile.avatar });
-        await appStorage.set(rosterKey(), JSON.stringify(roster), true);
-      }
-    }catch(e){ /* non-critical */ }
-  }
-
-  function startLivePolling(){
-    if(livePollTimer) return; // already polling -- avoid resetting a working interval
-    refreshLiveState();
-    livePollTimer = setInterval(refreshLiveState, 1200);
-  }
-  function stopLivePolling(){
-    if(livePollTimer){ clearInterval(livePollTimer); livePollTimer = null; }
-  }
-  // Browsers throttle or fully pause setInterval in backgrounded tabs. Force an
-  // immediate refresh (and let the interval re-establish itself) whenever this
-  // tab/window becomes visible or focused again, so a live match doesn't appear
-  // "frozen" just because someone switched apps for a moment.
-  document.addEventListener('visibilitychange', ()=>{
-    if(document.visibilityState === 'visible' && mpRoomCode && isMultiModeActive()){
-      if(IS_HOSTED_ENV) startLivePolling();
-      else startP2PTick();
-    }
-  });
-  window.addEventListener('focus', ()=>{
-    if(mpRoomCode && isMultiModeActive()){
-      if(IS_HOSTED_ENV) startLivePolling();
-      else startP2PTick();
-    }
-  });
-
-  async function getLiveSession(){
-    try{
-      const r = await appStorage.get(sessionKey(), true);
-      return r && r.value ? JSON.parse(r.value) : null;
-    }catch(e){ return null; }
-  }
-
-  function computeLivePhase(session){
-    if(!session) return { phase:'none' };
-    if(session.status === 'waiting'){
-      const msLeft = (session.waitingSince + LIVE_LOBBY_MS) - Date.now();
-      if(msLeft > 0) return { phase:'lobby', secondsLeft: Math.ceil(msLeft/1000) };
-      // deterministic transition point -- every client computes the identical startedAt
-      return { phase:'question', index:0, timeLeftMs: LIVE_QUESTION_MS, derivedStart: session.waitingSince + LIVE_LOBBY_MS };
-    }
-    const startedAt = session.startedAt || (session.waitingSince + LIVE_LOBBY_MS);
-    const elapsed = Date.now() - startedAt;
-    const index = Math.floor(elapsed / LIVE_CYCLE_MS);
-    if(index >= session.questions.length) return { phase:'finished' };
-    const withinCycle = elapsed - index*LIVE_CYCLE_MS;
-    if(withinCycle < LIVE_QUESTION_MS){
-      return { phase:'question', index, timeLeftMs: LIVE_QUESTION_MS - withinCycle };
-    }
-    return { phase:'reveal', index, timeLeftMs: LIVE_CYCLE_MS - withinCycle };
-  }
-
-  let livePollBusy = false;
-  async function refreshLiveState(){
-    if(!mpRoomCode || !isMultiModeActive()) return;
-    if(livePollBusy) return; // a poll is already in flight -- skip this tick rather than overlap it
-    livePollBusy = true;
-    // Watchdog: if a single poll cycle somehow hangs (e.g. a slow/stuck storage call),
-    // force the mutex open again after 6s so the UI can never get permanently stuck.
-    const watchdog = setTimeout(()=>{ livePollBusy = false; }, 6000);
-    try{
-      const session = await getLiveSession();
-      if(!session || session.status === 'finished-empty'){
-        liveLastRenderedKey = null;
-        closeMpOverlay();
-        renderLiveStartForm();
-        return;
-      }
-      const phaseInfo = computeLivePhase(session);
-      if(phaseInfo.phase === 'lobby'){
-        renderLiveLobby(session, phaseInfo.secondsLeft);
-      }else if(phaseInfo.phase === 'question'){
-        // If the lobby just expired, the session doc still says status:'waiting' --
-        // persist the deterministic transition to 'active' now so every future poll
-        // (on every device) computes real elapsed-since-start time instead of
-        // re-deriving this same "just started" snapshot forever.
-        if(session.status === 'waiting'){
-          session.status = 'active';
-          session.startedAt = phaseInfo.derivedStart;
-          try{ await appStorage.set(sessionKey(), JSON.stringify(session), true); }catch(e){ /* another client likely wrote the same value */ }
-        }
-        await renderLiveQuestion(session, phaseInfo.index, phaseInfo.timeLeftMs);
-      }else if(phaseInfo.phase === 'reveal'){
-        await renderLiveReveal(session, phaseInfo.index);
-      }else if(phaseInfo.phase === 'finished'){
-        await renderLiveFinal(session);
-      }
-    }finally{
-      clearTimeout(watchdog);
-      livePollBusy = false;
-    }
-  }
-
-  function renderLiveStartForm(){
-    if(liveLastRenderedKey === 'start-form') return;
-    liveLastRenderedKey = 'start-form';
-    if(IS_HOSTED_ENV){
-      $('mpLiveArea').innerHTML = `
-        <p class="hint">Uses your notes, question count, type, and difficulty set above. Everyone in this room who has this tab open gets pulled in automatically and answers the same questions at the same time.</p>
-        <button class="btn btn-teal" id="mpLiveStartBtn">Start live match</button>
-        <div id="mpLiveStartStatus" style="margin-top:10px;"></div>`;
-      $('mpLiveStartBtn').addEventListener('click', createLiveMatch);
-    }else{
-      renderP2PQuizSetup();
-    }
-  }
-
-  async function createLiveMatch(){
-    const topic = $('genInput').value.trim();
-    if(!topic){ toast('Add your notes in the field above first.'); return; }
-    let count = parseInt($('genCount').value, 10) || 8;
-    if(count > 20) count = 20; // keep live matches to a reasonable length for everyone waiting together
-    if(count < 1) count = 8;
-    const type = $('genType').value;
-    const difficulty = $('genDifficulty').value;
-    $('mpLiveStartBtn').disabled = true;
-    $('mpLiveStartBtn').innerHTML = `<span class="spinner" style="border-color:rgba(35,20,0,0.3); border-top-color:#231400;"></span>Generating…`;
-    $('mpLiveStartStatus').innerHTML = `Writing questions for everyone in the room…`;
-    try{
-      let allQuestions = [];
-      let idleLM = 0;
-      for(let b=0; b<12 && allQuestions.length < count && idleLM < 3; b++){
-        const thisBatch = Math.min(BATCH_SIZE, count - allQuestions.length + (b > 0 ? 2 : 0));
-        const before = allQuestions.length;
-        try{ const qs = await generateBatch(topic, thisBatch, type, difficulty); allQuestions = dedupeByKey(allQuestions.concat(filterValidQuestions(qs, type)), x => normKey(x.question)); }
-        catch(e){ if(b === 0 && allQuestions.length === 0 && idleLM >= 2) throw e; }
-        idleLM = allQuestions.length === before ? idleLM + 1 : 0;
-      }
-      allQuestions = allQuestions.slice(0, count);
-      if(allQuestions.length === 0) throw new Error('No questions generated');
-
-      const session = {
-        status: 'waiting',
-        topic: topic.slice(0,80),
-        questions: allQuestions,
-        waitingSince: Date.now(),
-        startedAt: null,
-        createdAt: Date.now()
-      };
-      await appStorage.set(sessionKey(), JSON.stringify(session), true);
-      // fresh roster for the new match, seeded with the creator
-      await appStorage.set(rosterKey(), JSON.stringify([{ playerId: mpPlayerId, name: mpName || 'Player', avatar: profile.avatar }]), true);
-      liveMyAnswers = {};
-      await appStorage.set(ansKey(mpPlayerId), JSON.stringify({ score:0, streak:0, bestStreak:0, correctCount:0, answers:{} }), true);
-      liveLastRenderedKey = null;
-      toast('Live match starting!');
-    }catch(err){
-      console.error(err);
-      const statusEl = $('mpLiveStartStatus');
-      if(statusEl) statusEl.innerHTML = '';
-    }finally{
-      const btn = $('mpLiveStartBtn');
-      if(btn){ btn.disabled = false; btn.textContent = 'Start live match'; }
-    }
-  }
-
-  function renderLiveLobby(session, secondsLeft){
-    const key = 'lobby-' + secondsLeft;
-    if(liveLastRenderedKey === key) return;
-    liveLastRenderedKey = key;
-    mpArea().innerHTML = `
-      <div class="glass-card enter" style="text-align:center; padding:30px 20px;">
-        <div style="font-family:'Montserrat',sans-serif; font-weight:800; font-size:34px; color:var(--accent);">${secondsLeft}</div>
-        <div class="hint" style="margin:6px 0 0;">"${escapeHtml(session.topic)}" starts in a few seconds — stay on this tab and get ready!</div>
-      </div>`;
-  }
-
-  let liveMyAnswers = {};
-
-  async function loadMyLiveDoc(){
-    try{
-      const r = await appStorage.get(ansKey(mpPlayerId), true);
-      return r && r.value ? JSON.parse(r.value) : { score:0, streak:0, bestStreak:0, correctCount:0, answers:{} };
-    }catch(e){ return { score:0, streak:0, bestStreak:0, correctCount:0, answers:{} }; }
-  }
-
-  let liveQuestionTimeLeftMs = 0; // tracked so submitLiveAnswer knows how much time was left at click time
-
-  async function renderLiveQuestion(session, index, timeLeftMs){
-    liveQuestionTimeLeftMs = timeLeftMs;
-    const myDoc = await loadMyLiveDoc();
-    const already = myDoc.answers[index] !== undefined;
-    const key = 'q-' + index + (already ? '-answered' : '');
-    const q = session.questions[index];
-    const secondsLeft = Math.max(0, Math.ceil(timeLeftMs/1000));
-
-    // Rebuild the DOM only when we've moved to a new question or the answered-state
-    // changed; otherwise just tick the timer text so we don't wipe button state every poll.
-    if(liveLastRenderedKey !== key){
-      liveLastRenderedKey = key;
-      if(!already) playSwoosh();
-      const opts = q.options || [];
-      mpArea().innerHTML = `
-        <div class="glass-card enter question-card-xl" id="mpQuestionCard">
-          <div class="game-header">
-            <div class="hint" style="margin:0;">Question ${index+1} of ${session.questions.length}</div>
-            <div style="font-family:'Montserrat',sans-serif; font-weight:800; color:${secondsLeft<=5?'var(--red)':'var(--accent)'};" id="mpLiveTimer">${secondsLeft}s</div>
-          </div>
-          ${renderMediaBlockHtml(q)}
-          <div class="game-question">${escapeHtml(q.question)}</div>
-          ${buildAnswerButtonsHtml(opts, already ? 'disabled' : '')}
-          ${already ? `<p class="hint" style="margin-top:14px;">Answer locked in — waiting for the timer...</p>` : ''}
-        </div>`;
-      if(!already){
-        $('mpQuestionCard').querySelectorAll('[data-oi]').forEach(btn=>{
-          btn.addEventListener('click', ()=> submitLiveAnswer(index, parseInt(btn.dataset.oi,10), q));
-        });
-      }
-    }else{
-      const timerEl = $('mpLiveTimer');
-      if(timerEl){ timerEl.textContent = secondsLeft + 's'; timerEl.style.color = secondsLeft<=5 ? 'var(--red)' : 'var(--accent)'; }
-    }
-  }
-
-  async function submitLiveAnswer(index, oi, q){
-    document.querySelectorAll('#mpQuestionCard [data-oi]').forEach(b=>b.disabled=true);
-    const myDoc = await loadMyLiveDoc();
-    if(myDoc.answers[index] !== undefined) return; // already answered, ignore
-    const correct = oi === q.correctIndex;
-    const correctAnswerText = (q.options && q.options[q.correctIndex]) || '';
-    myDoc.answers[index] = oi;
-    if(correct){
-      myDoc.streak += 1;
-      if(myDoc.streak > myDoc.bestStreak) myDoc.bestStreak = myDoc.streak;
-      const speedBonus = Math.round((Math.max(0, liveQuestionTimeLeftMs) / LIVE_QUESTION_MS) * 50);
-      myDoc.score += 100 + speedBonus + (myDoc.streak-1)*10;
-      myDoc.correctCount += 1;
-      playCorrectSound();
-      if(mpOverlayEl) spawnConfetti(mpOverlayEl);
-      addCoins(8);
-    }else{
-      myDoc.streak = 0;
-      playWrongSound();
-    }
-    showFlash(correct, correctAnswerText, q.explanation, ()=>{});
-    await appStorage.set(ansKey(mpPlayerId), JSON.stringify(myDoc), true);
-    liveLastRenderedKey = null; // force re-render to show "locked in" state
-  }
-
-  async function renderLiveReveal(session, index){
-    const key = 'reveal-' + index;
-    if(liveLastRenderedKey === key) return;
-    const q = session.questions[index];
-    const roster = await getLiveRoster();
-    const results = await Promise.all(roster.map(async p => {
-      const doc = await loadPlayerLiveDoc(p.playerId);
-      return { name: p.name, playerId: p.playerId, avatar: p.avatar, correct: doc.answers[index] === q.correctIndex, score: doc.score };
-    }));
-    liveLastRenderedKey = key;
-    playSwoosh();
-    results.sort((a,b)=> b.score - a.score);
-    mpArea().innerHTML = `
-      <div class="glass-card enter">
-        <div style="text-align:center; margin-bottom:12px;">
-          <div class="hint" style="margin:0 0 4px;">Correct answer</div>
-          <div style="font-weight:700; font-size:16px; color:var(--k-green);">${escapeHtml((q.options||[])[q.correctIndex] || '')}</div>
-        </div>
-        ${renderRaceTrackHtml(results)}
-        <div class="list-label" style="margin-top:6px;">Standings</div>
-        ${results.slice(0,8).map((r,i) => `
-          <div class="mp-row ${r.playerId===mpPlayerId?'me':''}">
-            <div class="mp-rank">${i+1}</div>
-            <div><div class="mp-name">${r.avatar||'🙂'} ${escapeHtml(r.name)}${r.playerId===mpPlayerId?' (you)':''} ${r.correct ? '✓' : ''}</div></div>
-            <div class="mp-score">${r.score}</div>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  async function getLiveRoster(){
-    try{
-      const r = await appStorage.get(rosterKey(), true);
-      return r && r.value ? JSON.parse(r.value) : [];
-    }catch(e){ return []; }
-  }
-  async function loadPlayerLiveDoc(pid){
-    try{
-      const r = await appStorage.get(ansKey(pid), true);
-      return r && r.value ? JSON.parse(r.value) : { score:0, answers:{} };
-    }catch(e){ return { score:0, answers:{} }; }
-  }
-
-  async function renderLiveFinal(session){
-    const key = 'final-' + session.startedAt;
-    if(liveLastRenderedKey === key) return;
-    const roster = await getLiveRoster();
-    const results = await Promise.all(roster.map(async p => {
-      const doc = await loadPlayerLiveDoc(p.playerId);
-      return { name: p.name, playerId: p.playerId, avatar: p.avatar, score: doc.score, correctCount: doc.correctCount||0 };
-    }));
-    liveLastRenderedKey = key;
-    results.sort((a,b)=> b.score - a.score);
-    const mine = results.find(r => r.playerId === mpPlayerId);
-    if(mine) submitMpScore(session.topic, mine.score); // also post to the all-time async leaderboard
-
-    const myScore = mine ? mine.score : 0;
-    const isNewHighScore = myScore > highScore;
-    const trophy = isNewHighScore ? TROPHY_GOLD : TROPHY_SILVER;
-    const prevBest = highScore;
-    if(isNewHighScore) saveHighScore(myScore);
-    if(isNewHighScore) playVictoryFanfare();
-
-    mpArea().innerHTML = `
-      <div class="glass-card enter" id="mpFinalCard">
-        <div style="text-align:center; margin-bottom:6px;">
-          <div class="trophy-wrap spin-in" style="margin:0 auto 6px;">${trophy}</div>
-          <div class="trophy-label ${isNewHighScore ? 'gold' : 'silver'}">${isNewHighScore ? '★ New Personal Best!' : `Your best: ${prevBest}`}</div>
-          <div style="font-family:'Montserrat',sans-serif; font-weight:800; font-size:19px; color:var(--accent);">Match Complete</div>
-          <div class="hint">"${escapeHtml(session.topic)}"</div>
-        </div>
-        ${renderPodiumHtml(results)}
-        ${results.map((r,i) => `
-          <div class="mp-row ${r.playerId===mpPlayerId?'me':''}">
-            <div class="mp-rank">${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)}</div>
-            <div><div class="mp-name">${r.avatar||'🙂'} ${escapeHtml(r.name)}${r.playerId===mpPlayerId?' (you)':''}</div><div class="mp-meta">${r.correctCount}/${session.questions.length} correct</div></div>
-            <div class="mp-score">${r.score}</div>
-          </div>`).join('')}
-        <button class="btn btn-teal" id="mpLiveAgainBtn" style="margin-top:12px;">Start another live match</button>
-        <button class="btn btn-ghost" id="mpDoneBtn" style="margin-top:8px;">Done</button>
-      </div>`;
-    const finalCard = $('mpFinalCard');
-    if(finalCard && (isNewHighScore || results[0].playerId === mpPlayerId)) spawnConfetti(finalCard);
-    const againBtn = $('mpLiveAgainBtn');
-    if(againBtn) againBtn.addEventListener('click', async ()=>{
-      await appStorage.set(sessionKey(), JSON.stringify({status:'finished-empty'}), true);
-      liveLastRenderedKey = null;
-      closeMpOverlay();
-      refreshLiveState();
-    });
-    const doneBtn = $('mpDoneBtn');
-    if(doneBtn) doneBtn.addEventListener('click', closeMpOverlay);
-  }
-
 
   loadSaved();
   loadHighScore();
@@ -6941,7 +5750,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     container.innerHTML = html;
   }
 
-  loadMpState();
   initHeroStars();
 
   /* ===================== PWA: installability ===================== */
