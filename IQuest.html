@@ -1103,6 +1103,7 @@
           </div>
         </div>
         <div class="gen-form-col">
+          <div class="field"><div class="hint">Ready-made practice: type Spanish, French, or Math (up to Calculus BC) in the box. Notes in Spanish or French work too.</div></div>
           <div class="field"><label class="field-label">Difficulty level (based on your sources)</label>
             <select id="genLevel">
               <option value="">Match my sources (default)</option>
@@ -1140,7 +1141,7 @@
     <div id="genStatus"></div>
     <div id="quizArea"><div class="empty">Generate a quiz above, then hit Play to start the game.</div></div>
 
-    <div class="card" id="savedQuizzesCard">
+    <div class="card" id="savedQuizzesCard" hidden style="display:none;">
       <h2>Saved quizzes <span id="savedCount" style="color:var(--text-faint); font-weight:400; font-size:13px;"></span></h2>
       <p class="hint">Personal to this device/session — not shared with anyone else.</p>
       <div id="savedList"><div class="empty">No saved quizzes yet.</div></div>
@@ -1172,6 +1173,7 @@
           </div>
         </div>
         <div class="gen-form-col">
+          <div class="field"><div class="hint">Ready-made practice: type Spanish, French, or Math (up to Calculus BC) in the box. Notes in Spanish or French work too.</div></div>
           <div class="field"><label class="field-label">Difficulty level (based on your sources)</label>
             <select id="flashLevel">
               <option value="">Match my sources (default)</option>
@@ -1333,6 +1335,7 @@
   // A short title for a quiz or deck, based on what was entered: a short first line is used as is,
   // otherwise the most repeated meaningful words become the title.
   function makeTitle(text){
+    if(activeSubjectNoNotes && SUBJECT_TITLE[activeSubject]) return SUBJECT_TITLE[activeSubject];
     const t = String(text || '').replace(/https?:\/\/\S+/g, ' ').trim();
     if(!t) return 'Untitled';
     const first = t.split(/\n+/)[0].replace(/^(topic|title)\s*:\s*/i, '').replace(/[.!?:]+$/, '').trim();
@@ -1458,6 +1461,7 @@
     try{
       const r = await appStorage.get('studydeck_review_bank', false);
       reviewBank = r && r.value ? JSON.parse(r.value) : {};
+      Object.keys(reviewBank).forEach(k => { if(isJunkQuestion(reviewBank[k])) delete reviewBank[k]; });
     }catch(e){ reviewBank = {}; }
   }
   async function saveReviewBank(){
@@ -1617,7 +1621,8 @@
     if(!c || typeof c !== 'object') return null;
     const term = String(c.term != null ? c.term : (c.front != null ? c.front : (c.question != null ? c.question : ''))).trim();
     const definition = String(c.definition != null ? c.definition : (c.back != null ? c.back : (c.answer != null ? c.answer : ''))).trim();
-    return term && definition ? { term, definition } : null;
+    if(JUNK_RE.test(term) || JUNK_RE.test(definition)) return null;
+    return term && definition ? { term: prettyMath(term), definition: prettyMath(definition) } : null;
   }
   function isValidFlashcard(c){
     return !!c && typeof c.term === 'string' && c.term.trim().length > 0 &&
@@ -1655,7 +1660,7 @@
     const material = hasImage
       ? (topicText ? `the attached image, plus these notes:\n"""\n${topicText}\n"""` : `the attached image`)
       : `this material:\n"""\n${topicText}\n"""`;
-    return `${levelInstruction(level)}${videoClause(topicText)}${langRule('flashLang')}Create exactly ${count} flashcards (term/definition pairs) based on ${material}. Match the format of the notes: if they are a vocabulary or term list, put the word on the front and its meaning on the back; otherwise put a brief key point on the front and its explanation on the back.
+    return `${levelInstruction(level)}${videoClause(topicText)}${langRule('flashLang')}${subjectRule()}Create exactly ${count} flashcards (term/definition pairs) based on ${material}. Match the format of the notes: if they are a vocabulary or term list, put the word on the front and its meaning on the back; otherwise put a brief key point on the front and its explanation on the back.
 If the notes are split into paragraphs, treat each paragraph as a separate point: cover every paragraph, give each at least one card, and never mix two paragraphs into one card.\nPick the most important terms, concepts, dates, or facts. Keep each term short (a few words) and each definition concise (under 25 words).
 Respond with ONLY a raw JSON array, no markdown code fences, no prose before or after. Each item must match exactly:
 {"term":"...","definition":"..."}`;
@@ -1957,6 +1962,8 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
 
   $('flashGenerateBtn').addEventListener('click', async ()=>{
     let topicText = $('flashInput').value.trim();
+    activeSubject = detectSubject(topicText); activeSubjectNoNotes = !!activeSubject; activeSubjectText = topicText;
+    if(activeSubject) topicText = SUBJECT_DEFAULT_TEXT[activeSubject];
     if(!topicText && !flashAttachedImage){ nudge($('flashInput')); return; }
     topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/[ \t]+/g, ' ').replace(/\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
     if(!topicText && !flashAttachedImage){ $('flashGenStatus').innerHTML = NEED_CONTEXT_MSG; nudge($('flashInput')); return; }
@@ -2028,8 +2035,8 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
           if(allCards.length < count) await sleep(100);
         });
       }else if(!cloudAvailable()){
-        let _fraw = $('flashInput').value || topicText;
-        allCards = instantFlashcards(_fraw, count);
+        let _fraw = activeSubjectNoNotes ? topicText : ($('flashInput').value || topicText);
+        allCards = instantCardsFor(_fraw, count);
         if(allCards.length === 0){ $('flashGenStatus').innerHTML = INSTANT_SHORT; nudge($('flashInput')); return; }
         toast(INSTANT_NOTE);
       }else{
@@ -2044,7 +2051,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
         wait.update(allCards.length, count);
         if(allCards.length > 0 && allCards.length < count){
           const have = new Set(allCards.map(x => normKey(x.term)));
-          allCards = allCards.concat(instantFlashcards(topicText, count).filter(x => !have.has(normKey(x.term)))).slice(0, count);
+          allCards = allCards.concat(instantCardsFor(topicText, count).filter(x => !have.has(normKey(x.term)))).slice(0, count);
         }
       }
 
@@ -2229,7 +2236,7 @@ Explain what it means in plain, everyday language, as if talking a student throu
           <button class="btn btn-ghost btn-sm" id="flashNextBtn" ${s.pos>=s.cards.length-1?'disabled':''}>Next &rarr;</button>
           <button class="btn btn-ghost btn-sm" id="flashEndBtn" style="margin-left:auto;">End</button>
         </div>
-        ${s.deckId ? `<button class="btn btn-ghost btn-sm" id="flashMediaToggleBtn" style="margin-top:10px;">📎 Add/edit media</button><div id="flashMediaFormWrap"></div>` : ''}
+        ${s.deckId ? `<button class="btn btn-ghost btn-sm" id="flashMediaToggleBtn" style="margin-top:10px;">🔗 Backup Links</button><div id="flashMediaFormWrap"></div>` : ''}
       </div>`;
 
     $('flashCardEl').addEventListener('click', ()=>{
@@ -2265,7 +2272,7 @@ Explain what it means in plain, everyday language, as if talking a student throu
             const idx = deck.cards.findIndex(c => c.term === card.term && c.definition === card.definition);
             if(idx >= 0){ deck.cards[idx] = Object.assign({}, deck.cards[idx], updated); await persistFlashDecks(); }
           }
-          toast('Media saved.');
+          toast('Saved.');
           renderFlashStudy();
         });
         $('flashMediaCancelBtn').addEventListener('click', ()=>{ wrap.innerHTML = ''; });
@@ -2960,6 +2967,10 @@ Explain what it means in plain, everyday language, as if talking a student throu
     try{
       const r = await appStorage.get('saved_tests', false);
       savedTests = r && r.value ? JSON.parse(r.value) : [];
+      // drop leftover junk questions (web page menus, sign-in text, link errors) saved by older versions
+      const before = JSON.stringify(savedTests).length;
+      savedTests = savedTests.map(t => Object.assign({}, t, { questions: (t.questions || []).filter(q => !isJunkQuestion(q)) })).filter(t => t.questions.length);
+      if(JSON.stringify(savedTests).length !== before) persistSaved();
     }catch(e){ savedTests = []; }
     renderSaved();
   }
@@ -2980,7 +2991,7 @@ Explain what it means in plain, everyday language, as if talking a student throu
     const material = hasImage
       ? (topicText ? `the attached image, plus these notes:\n"""\n${topicText}\n"""` : `the attached image`)
       : `this material:\n"""\n${topicText}\n"""`;
-    return `${levelInstruction(level)}${videoClause(topicText)}${langRule('genLang')}Create a ${difficulty}-difficulty practice quiz with exactly ${count} questions based on ${material}.
+    return `${levelInstruction(level)}${videoClause(topicText)}${langRule('genLang')}${subjectRule()}Create a ${difficulty}-difficulty practice quiz with exactly ${count} questions based on ${material}.
 ${typeInstruction}
 ${DIFFICULTY_GUIDE[difficulty] || ''}
 For multiple_choice, give exactly 4 short, distinct options with exactly one correct answer, and vary which position holds the correct answer. For true_false, options must be exactly ["True","False"] and the statement must be clearly true or clearly false.
@@ -3947,9 +3958,9 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   // Cleans one raw item from the model into the exact shape the app plays, or returns null.
   function sanitizeQuestion(q){
     if(!q || typeof q !== 'object') return null;
-    const question = String(q.question != null ? q.question : (q.q != null ? q.q : '')).trim();
+    const question = prettyMath(String(q.question != null ? q.question : (q.q != null ? q.q : '')).trim());
     if(!question || !Array.isArray(q.options)) return null;
-    const raw = q.options.map(o => (o == null ? '' : String(o)).trim());
+    const raw = q.options.map(o => prettyMath((o == null ? '' : String(o)).trim()));
     let ci = q.correctIndex;
     if(typeof ci === 'string' && /^\d+$/.test(ci.trim())) ci = parseInt(ci, 10);
     else if(typeof ci === 'string' && /^[A-Fa-f]$/.test(ci.trim())) ci = ci.trim().toUpperCase().charCodeAt(0) - 65;
@@ -3964,12 +3975,12 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     const isTF = options.length === 2 && options.every(o => /^(true|false)$/i.test(o));
     if(isTF){
       const ans = /^true$/i.test(options[idx]) ? 0 : 1;
-      return { type:'true_false', question, options:['True','False'], correctIndex: ans, explanation: String(q.explanation || '').trim() };
+      return { type:'true_false', question, options:['True','False'], correctIndex: ans, explanation: prettyMath(String(q.explanation || '').trim()) };
     }
     if(options.length < 3) return null;
     const trimmed = options.slice(0, 6);
     if(idx >= trimmed.length) return null;
-    return { type:'multiple_choice', question, options: trimmed, correctIndex: idx, explanation: String(q.explanation || '').trim() };
+    return { type:'multiple_choice', question, options: trimmed, correctIndex: idx, explanation: prettyMath(String(q.explanation || '').trim()) };
   }
   function dedupeByKey(list, keyFn){ const seen = new Set(), out = []; list.forEach(x => { const k = keyFn(x); if(!k || seen.has(k)) return; seen.add(k); out.push(x); }); return out; }
   function normKey(s){ return String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
@@ -3987,7 +3998,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     const out = [];
     list.forEach(raw => {
       const q = sanitizeQuestion(raw);
-      if(!q || !isValidQuestion(q)) return;
+      if(!q || !isValidQuestion(q) || isJunkQuestion(q)) return;
       if(type === 'true_false' && q.type !== 'true_false') return;
       if(type === 'multiple_choice' && q.type !== 'multiple_choice') return;
       out.push(shuffleQuestion(q));
@@ -4084,12 +4095,12 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   /* ===================== Instant mode (no AI, no key, works offline) ===================== */
   // Builds questions straight from the notes: fill-in-the-blank, true/false and definition cards.
   // It is rule-based, so it is instant and private, but simpler than a real AI.
-  const IQ_STOP = new Set('the a an and or but if then of to in on at for with by from as is are was were be been being this that these those it its into than which who whom whose what when where why how not no nor so such can could may might will would shall should do does did has have had also more most other some any each both few many much own same very just about over after before between during under again further once only there here their they them he she his her you your we our i me my'.split(' '));
+  const IQ_STOP = new Set('the a an and or but if then of to in on at for with by from as is are was were be been being this that these those it its into than which who whom whose what when where why how not no nor so such can could may might will would shall should do does did has have had also more most other some any each both few many much own same very just about over after before between during under again further once only there here their they them he she his her you your we our i me my de la que el en y los se del las por un para con una su al lo como más pero sus le ya o este sí porque esta entre cuando muy sin sobre también me hasta hay donde quien desde todo nos durante todos uno les ni contra otros ese eso ante ellos e esto antes algunos qué unos yo otro otras otra él tanto esa estos mucho quienes nada muchos cual poco ella estar estas algunas algo nosotros mi mis tú te ti tu tus ellas es son está están fue ser era han ha le la les un une des du et au aux ce cet cette ces qui quoi dont où ne pas plus par pour sur sous avec sans dans est sont été être avoir ont il elle ils elles nous vous je tu me te se mon ma mes ton ta tes sa ses leur leurs notre votre ou mais donc car si comme très aussi tout tous toute toutes'.split(' '));
   function iqRand(n){ return Math.floor(Math.random() * n); }
   function iqSentences(text){
     return String(text || '').replace(/\[Website[^\]]*\]/gi, ' ')
       .split(/(?<=[.!?。！？])\s+|\n+/).map(s => s.replace(/^[\s\-•*\d.)]+/, '').replace(/\s+/g, ' ').trim())
-      .filter(s => { const w = s.split(' ').length; return s.length >= 30 && s.length <= 260 && w >= 5 && w <= 42; });
+      .filter(s => { const w = s.split(' ').length; return !JUNK_RE.test(s) && s.length >= 30 && s.length <= 260 && w >= 5 && w <= 42; });
   }
   // Paragraphs in the notes box are separate points. Blank lines split them; if there are none,
   // several long lines (one point per line) count too. Short lines (vocab lists) stay together.
@@ -4104,7 +4115,10 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   }
   function iqTokens(s){
     const out = [], re = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu; let m;
-    while((m = re.exec(s))){ out.push({ w: m[0], i: m.index }); }
+    while((m = re.exec(s))){
+      const el = /^(l|d|j|n|s|t|m|c|qu|jusqu|lorsqu|puisqu)['’](.+)$/i.exec(m[0]); // French l'eau -> eau
+      if(el) out.push({ w: el[2], i: m.index + m[0].length - el[2].length }); else out.push({ w: m[0], i: m.index });
+    }
     return out;
   }
   function iqClass(w){ return /^\d/.test(w) ? 'n' : /^\p{Lu}/u.test(w) ? 'c' : 'l'; }
@@ -4154,7 +4168,209 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     const swapped = x.s.slice(0, c.i) + d[0] + x.s.slice(c.i + c.w.length);
     return { type:'true_false', question:'True or false: ' + swapped, options:['True','False'], correctIndex:1, explanation:'False. Your notes say: ' + x.s };
   }
+  /* ===================== Subjects: Spanish, French and advanced Math (works offline too) ===================== */
+  let activeSubject = '', activeSubjectNoNotes = false;
+  const SUBJECT_TITLE = { math: 'Calculus BC and Advanced Math', es: 'Spanish Essentials', fr: 'French Essentials' };
+  const SUBJECT_DEFAULT_TEXT = {
+    math: 'Advanced high school mathematics: Algebra II, Precalculus and AP Calculus BC (limits, derivatives, integrals, series, parametric and polar functions, differential equations).',
+    es: 'Spanish language for students: essential vocabulary, grammar and verb conjugation.',
+    fr: 'French language for students: essential vocabulary, grammar and verb conjugation.'
+  };
+  const MATH_RULE = 'SUBJECT: Advanced high school mathematics, up to AP Calculus BC (algebra, precalculus, limits and L\'Hôpital, derivatives and implicit differentiation, related rates, optimization, integration techniques, improper integrals, areas and volumes, differential equations, Euler\'s method, parametric, polar and vector functions, sequences and series, Taylor series and error bounds). Make the problems genuinely challenging, multi-step and exam-style. Work every problem out fully BEFORE writing it so the keyed answer is exactly right and the other options are NOT equal to it. Make wrong options come from realistic mistakes (sign errors, a forgotten chain rule, a dropped constant). Write math in plain readable text with symbols, such as x², √(x+1), ∫₀¹, π, ∑, lim, e^(2x), not LaTeX or dollar signs. In the explanation, show the key steps (up to 50 words). This overrides the length rule below.\n';
+  const LANG_SUBJECT_RULE = {
+    es: 'SUBJECT: The student is learning Spanish. Test Spanish vocabulary, grammar, verb conjugation and comprehension. Write the Spanish being tested in Spanish and give the English meaning or the grammar rule in the explanation. If the notes are in English, treat them as a topic or word list and test the Spanish for it. For flashcards put the Spanish on the front and the English on the back (a short example sentence is welcome). This overrides the LANGUAGE rule above.\n',
+    fr: 'SUBJECT: The student is learning French. Test French vocabulary, grammar, verb conjugation and comprehension. Write the French being tested in French and give the English meaning or the grammar rule in the explanation. If the notes are in English, treat them as a topic or word list and test the French for it. For flashcards put the French on the front and the English on the back (a short example sentence is welcome). This overrides the LANGUAGE rule above.\n'
+  };
+  // The box itself picks the subject: a request that is only "Spanish", "French" or math words.
+  const MATH_WORDS = new Set('math maths mathematics calculus calc algebra precalc precalculus derivative derivatives integral integrals limit limits series taylor polar parametric differential equations geometry trigonometry trig sequences'.split(' '));
+  const SUBJ_FILLER = new Set('a an the of for me my on in to and with some more hard harder advanced ap bc ab high school hs quiz test practice problems problem questions question help learn study basics essentials vocab vocabulary words verbs grammar flashcards cards please make give'.split(' '));
+  function detectSubject(text){
+    const t = String(text || '').trim().toLowerCase();
+    if(!t || t.length > 80) return '';
+    const words = t.replace(/[^\p{L}\p{N} ]+/gu, ' ').split(/\s+/).filter(Boolean);
+    if(!words.length) return '';
+    const only = (kw) => words.some(w => kw.test(w)) && words.every(w => kw.test(w) || SUBJ_FILLER.has(w));
+    if(only(/^(spanish|español|espanol)$/)) return 'es';
+    if(only(/^(french|français|francais)$/)) return 'fr';
+    if(words.some(w => MATH_WORDS.has(w)) && words.every(w => MATH_WORDS.has(w) || SUBJ_FILLER.has(w))) return 'math';
+    return '';
+  }
+  let activeSubjectText = '';
+  function subjectRule(){ return activeSubject === 'math' ? MATH_RULE : (LANG_SUBJECT_RULE[activeSubject] || ''); }
+
+  // Turns LaTeX-style or caret math from an AI into plain readable symbols.
+  const SUPM = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻','+':'⁺','n':'ⁿ' };
+  const SUBM = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','-':'₋','+':'₊' };
+  function sup(s){ s = String(s); if(s === '1') return ''; return s.split('').every(c => SUPM[c]) ? s.split('').map(c => SUPM[c]).join('') : '^(' + s + ')'; }
+  function subs(s){ s = String(s); return s.split('').every(c => SUBM[c]) ? s.split('').map(c => SUBM[c]).join('') : '_(' + s + ')'; }
+  const TEXMAP = { pi:'π', theta:'θ', alpha:'α', beta:'β', gamma:'γ', infty:'∞', int:'∫', sum:'∑', cdot:'·', times:'×', le:'≤', leq:'≤', ge:'≥', geq:'≥', neq:'≠', to:'→', rightarrow:'→', pm:'±', Delta:'Δ', sigma:'σ', mu:'μ', lambda:'λ', ln:'ln', sin:'sin', cos:'cos', tan:'tan', lim:'lim', log:'log', ne:'≠', approx:'≈' };
+  function prettyMath(s){
+    s = String(s == null ? '' : s);
+    if(!/[\\^]/.test(s)) return s;
+    return s.replace(/\\\(|\\\)|\\\[|\\\]|\$/g, '').replace(/\\left|\\right/g, '')
+      .replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '($1)/($2)')
+      .replace(/\\sqrt\s*\{([^{}]*)\}/g, '√($1)').replace(/\\sqrt\s*(\w)/g, '√$1')
+      .replace(/\\([A-Za-z]+)/g, (m, k) => TEXMAP[k] || m)
+      .replace(/\^\{([^{}]+)\}/g, (m, x) => sup(x)).replace(/\^(-?\d+)/g, (m, x) => sup(x))
+      .replace(/_\{([^{}]+)\}/g, (m, x) => subs(x)).replace(/_(\d)/g, (m, x) => subs(x));
+  }
+
+  // ---- offline problem maker: every answer is computed exactly, with realistic wrong answers ----
+  function mgcd(a, b){ a = Math.abs(a); b = Math.abs(b); return b ? mgcd(b, a % b) : a; }
+  function fr(n, d){ if(d < 0){ n = -n; d = -d; } const g = mgcd(n, d) || 1; n /= g; d /= g; return (n < 0 ? '−' : '') + Math.abs(n) + (d === 1 ? '' : '/' + d); }
+  function pc(n, d, sym){ if(n === 0) return '0'; const g = mgcd(n, d); n /= g; d /= g; if(d < 0){ n = -n; d = -d; } const num = (Math.abs(n) === 1 ? '' : Math.abs(n)) + sym; return (n < 0 ? '−' : '') + (d === 1 ? num : num + '/' + d); }
+  function mn(x){ return String(x).replace(/-/g, '−'); }
+  function ri(a, b){ return a + Math.floor(Math.random() * (b - a + 1)); }
+  function mpick(a){ return a[Math.floor(Math.random() * a.length)]; }
+  function sg(n){ return n < 0 ? '− ' + Math.abs(n) : '+ ' + n; }
+  function dec(x){ return String(Math.round(x * 100) / 100); }
+  function binom(n, k){ let r = 1; for(let i = 1; i <= k; i++) r = r * (n - k + i) / i; return Math.round(r); }
+  const MATH_GENS = [
+    { t: 'derivative chain', l: 1, f(){ const a = ri(2, 5), b = ri(-3, 3), n = ri(3, 5), c = ri(0, 2), u = a * c + b; if(!u || Math.abs(u) > 4) return null;
+      const v = n * a * Math.pow(u, n - 1); return { q: `If f(x) = (${a}x ${sg(b)})${sup(n)}, find f′(${c}).`, a: mn(v), w: [mn(n * Math.pow(u, n - 1)), mn(a * Math.pow(u, n - 1)), mn(n * a * Math.pow(u, n)), mn(n * a * Math.pow(u, n - 2))], e: `Chain rule: f′(x) = ${n}·${a}·(${a}x ${sg(b)})${sup(n - 1)}. At x = ${c}, the inside is ${u}, so f′ = ${mn(v)}.` }; } },
+    { t: 'derivative product exponential', l: 2, f(){ const m = ri(2, 3), k = ri(2, 3);
+      return { q: `If f(x) = x${sup(m)}·e^(${k}x), find f′(1).`, a: `${m + k}e${sup(k)}`, w: [`${m * k}e${sup(k)}`, `${m}e${sup(k)}`, `${m + k + 1}e${sup(k)}`, `${m + k}e`], e: `Product rule: f′(x) = e^(${k}x)(${m}x${sup(m - 1)} + ${k}x${sup(m)}). At x = 1 this is (${m} + ${k})e${sup(k)}.` }; } },
+    { t: 'derivative implicit', l: 2, f(){ const p = mpick([[3, 4], [4, 3], [-3, 4], [3, -4], [-4, 3], [-4, -3], [3, 4]]), x = p[0], y = p[1];
+      return { q: `For x² + y² = 25, find dy/dx at the point (${mn(x)}, ${mn(y)}).`, a: fr(-x, y), w: [fr(x, y), fr(y, x), fr(-y, x), fr(x, 25)], e: `Differentiate: 2x + 2y·y′ = 0, so y′ = −x/y = ${fr(-x, y)}.` }; } },
+    { t: 'integral substitution', l: 2, f(){ const a = ri(1, 3), n = ri(2, 4), num = Math.pow(1 + a, n + 1) - Math.pow(a, n + 1);
+      return { q: `Evaluate ∫₀¹ 2x(x² + ${a})${sup(n)} dx.`, a: fr(num, n + 1), w: [String(num), fr(num, n), fr(Math.pow(1 + a, n + 1), n + 1), fr(num, 2 * (n + 1))], e: `Let u = x² + ${a}, du = 2x dx. The integral becomes ∫ from ${a} to ${1 + a} of u${sup(n)} du = [u${sup(n + 1)}/${n + 1}] = ${fr(num, n + 1)}.` }; } },
+    { t: 'integral parts logarithm', l: 3, f(){ const n = ri(1, 3), co = n === 1 ? '' : n, d = (n + 1) * (n + 1);
+      return { q: `Evaluate ∫₁^e x${n === 1 ? '' : sup(n)} ln x dx.`, a: `(${co}e${sup(n + 1)} + 1)/${d}`, w: [`(${co}e${sup(n + 1)} − 1)/${d}`, `(e${sup(n + 1)} + 1)/${d}`, `(${co}e${sup(n + 1)} + 1)/${n + 1}`, `(${co}e${sup(n + 1)} + 1)/${d + 1}`], e: `Integrate by parts with u = ln x, dv = x${sup(n)}dx: the result is [x${sup(n + 1)}ln x/${n + 1} − x${sup(n + 1)}/${d}] from 1 to e = (${co}e${sup(n + 1)} + 1)/${d}.` }; } },
+    { t: 'integral improper', l: 2, f(){ const p = ri(1, 5);
+      if(p === 1) return { q: 'Evaluate ∫₁^∞ 1/x dx.', a: 'Diverges', w: ['1', '0', 'e', '2'], e: 'The antiderivative is ln x, which grows without bound as x → ∞, so the integral diverges.' };
+      return { q: `Evaluate ∫₁^∞ 1/x${sup(p)} dx.`, a: fr(1, p - 1), w: [fr(1, p), 'Diverges', fr(p, p - 1), fr(1, p + 1)], e: `∫ x${sup(-p)} dx = x${sup(1 - p)}/${1 - p}. Evaluated from 1 to ∞ this gives 1/${p - 1}.` }; } },
+    { t: 'integral average value area', l: 2, f(){ if(Math.random() < 0.5){ const a = ri(0, 2), b = a + ri(1, 3);
+        return { q: `Find the average value of f(x) = x² on the interval [${a}, ${b}].`, a: fr(a * a + a * b + b * b, 3), w: [fr(b * b * b - a * a * a, 3), fr(a * a + b * b, 2), fr((a + b) * (a + b), 4), fr(b * b, 3)], e: `Average = (1/(${b} − ${a}))·∫ x² dx = (${b}³ − ${a}³)/(3·${b - a}) = ${fr(a * a + a * b + b * b, 3)}.` }; }
+      const n = ri(2, 5); return { q: `Find the area of the region between y = x and y = x${sup(n)} for 0 ≤ x ≤ 1.`, a: fr(n - 1, 2 * n + 2), w: [fr(1, n + 1), fr(n - 1, n + 1), fr(1, 2 * (n + 1)), fr(1, 2)], e: `On [0,1], x ≥ x${sup(n)}. Area = ∫₀¹ (x − x${sup(n)}) dx = 1/2 − 1/${n + 1} = ${fr(n - 1, 2 * n + 2)}.` }; } },
+    { t: 'limit lhopital', l: 1, f(){ const r = ri(0, 2), a = ri(2, 7), b = ri(1, 7); if(a === b) return null;
+      if(r === 0) return { q: `Find lim (x→0) sin(${a}x)/(${b === 1 ? '' : b}x).`, a: fr(a, b), w: [fr(b, a), String(a), '0', fr(a * a, b)], e: `Since sin(u)/u → 1, sin(${a}x)/(${b}x) → ${a}/${b} = ${fr(a, b)}.` };
+      if(r === 1) return { q: `Find lim (x→0) (e^(${a}x) − 1)/(${b === 1 ? '' : b}x).`, a: fr(a, b), w: [fr(b, a), String(a), '1', '0'], e: `L′Hôpital: the derivative of the top is ${a}e^(${a}x) → ${a}, and the bottom's is ${b}. The limit is ${fr(a, b)}.` };
+      return { q: `Find lim (x→0) (1 − cos(${a}x))/x².`, a: fr(a * a, 2), w: [fr(a, 2), String(a * a), fr(a * a, 4), '0'], e: `Apply L′Hôpital twice: (${a}² cos(${a}x))/2 → ${a}²/2 = ${fr(a * a, 2)}.` }; } },
+    { t: 'series geometric', l: 1, f(){ const k = ri(2, 5), a = ri(1, 6);
+      return { q: `Find the sum of the series ∑ (n = 0 to ∞) ${a}·(1/${k})^n.`, a: fr(a * k, k - 1), w: [fr(a, k - 1), fr(a, k), fr(a * (k - 1), k), 'Diverges'], e: `Geometric series with first term ${a} and ratio 1/${k}: sum = a/(1 − r) = ${a}/(1 − 1/${k}) = ${fr(a * k, k - 1)}.` }; } },
+    { t: 'series convergence test', l: 2, f(){ if(Math.random() < 0.5){ const p = mpick([['1/2', 0.5], ['1', 1], ['3/2', 1.5], ['2', 2], ['3', 3]]), conv = p[1] > 1;
+        return { q: `Which statement is true about ∑ (n = 1 to ∞) 1/n^${p[0] === '1' ? '1' : '(' + p[0] + ')'}?`, a: conv ? 'Converges by the p-series test' : 'Diverges by the p-series test', w: [conv ? 'Diverges by the p-series test' : 'Converges by the p-series test', 'Converges by the alternating series test', 'Diverges by the divergence test (terms do not approach 0)'], e: `A p-series ∑ 1/n^p converges exactly when p > 1. Here p = ${p[0]}, so it ${conv ? 'converges' : 'diverges'}.` }; }
+      const p = mpick([['1/2', false], ['1', false], ['2', true], ['3', true]]);
+      return { q: `Classify ∑ (n = 1 to ∞) (−1)^n / n^${p[0] === '1' ? '1' : '(' + p[0] + ')'}.`, a: p[1] ? 'Absolutely convergent' : 'Conditionally convergent', w: [p[1] ? 'Conditionally convergent' : 'Absolutely convergent', 'Divergent', 'Cannot be determined'], e: `The alternating series converges (terms decrease to 0). The absolute series is a p-series with p = ${p[0]}, which ${p[1] ? 'converges, so it is absolutely convergent' : 'diverges, so it is only conditionally convergent'}.` }; } },
+    { t: 'series radius convergence taylor', l: 3, f(){ const a = ri(2, 9);
+      return { q: `Find the radius of convergence of ∑ (n = 1 to ∞) x^n / (n·${a}^n).`, a: String(a), w: [fr(1, a), String(a * a), '1', '∞'], e: `Ratio test: |aₙ₊₁/aₙ| → |x|/${a}. It is less than 1 when |x| < ${a}, so R = ${a}.` }; } },
+    { t: 'series taylor maclaurin', l: 3, f(){ const r = ri(0, 3), a = ri(2, 4);
+      if(r === 0) return { q: `What is the coefficient of x³ in the Maclaurin series of e^(${a}x)?`, a: fr(a * a * a, 6), w: [fr(a * a * a, 3), fr(a, 6), String(a * a * a), fr(a * a, 2)], e: `e^u = 1 + u + u²/2! + u³/3! + …, so with u = ${a}x the x³ term is ${a}³/6 = ${fr(a * a * a, 6)}.` };
+      if(r === 1) return { q: `What is the coefficient of x³ in the Maclaurin series of sin(${a}x)?`, a: fr(-a * a * a, 6), w: [fr(a * a * a, 6), fr(-a * a * a, 3), fr(-a, 6), '0'], e: `sin u = u − u³/3! + …, so the x³ term is −${a}³/6 = ${fr(-a * a * a, 6)}.` };
+      if(r === 2) return { q: `What is the coefficient of x² in the Maclaurin series of cos(${a}x)?`, a: fr(-a * a, 2), w: [fr(a * a, 2), fr(-a, 2), fr(-a * a, 4), '0'], e: `cos u = 1 − u²/2! + …, so the x² term is −${a}²/2 = ${fr(-a * a, 2)}.` };
+      const n = ri(3, 6), s = Math.pow(-1, n + 1); return { q: `What is the coefficient of x^${n} in the Maclaurin series of ln(1 + x)?`, a: fr(s, n), w: [fr(-s, n), fr(s, n - 1), fr(s, n + 1), fr(s, 1)], e: `ln(1 + x) = x − x²/2 + x³/3 − …, so the coefficient of x^${n} is (−1)^${sup(n + 1)}/${n} = ${fr(s, n)}.` }; } },
+    { t: 'parametric', l: 2, f(){ const a = ri(1, 4), b = ri(1, 4), c = ri(1, 3);
+      return { q: `For x = ${a === 1 ? '' : a}t² and y = ${b === 1 ? '' : b}t³, find dy/dx at t = ${c}.`, a: fr(3 * b * c, 2 * a), w: [fr(2 * a, 3 * b * c), fr(3 * b * c * c, 2 * a), fr(3 * b, 2 * a), fr(3 * b * c, a)], e: `dy/dt = ${3 * b}t², dx/dt = ${2 * a}t, so dy/dx = ${fr(3 * b, 2 * a)}·t. At t = ${c} it is ${fr(3 * b * c, 2 * a)}.` }; } },
+    { t: 'polar area', l: 3, f(){ const a = ri(1, 4);
+      if(Math.random() < 0.5) return { q: `Find the area enclosed by the polar curve r = ${a === 1 ? '' : a}cos θ.`, a: pc(a * a, 4, 'π'), w: [pc(a * a, 2, 'π'), pc(a * a, 1, 'π'), pc(a * a, 8, 'π'), pc(a, 4, 'π')], e: `Area = ½∫ r² dθ over [−π/2, π/2] = ½·${a}²·(π/2) = ${pc(a * a, 4, 'π')}.` };
+      return { q: `Find the area enclosed by the cardioid r = ${a === 1 ? '' : a}(1 + cos θ).`, a: pc(3 * a * a, 2, 'π'), w: [pc(a * a, 2, 'π'), pc(3 * a * a, 4, 'π'), pc(3 * a * a, 1, 'π'), pc(a * a, 1, 'π')], e: `Area = ½∫₀^(2π) ${a}²(1 + cos θ)² dθ = ½·${a}²·(3π) = ${pc(3 * a * a, 2, 'π')}.` }; } },
+    { t: 'differential equation separable', l: 2, f(){ if(Math.random() < 0.6){ const k = mpick([2, 3, -1, -2]), y0 = ri(2, 6);
+        return { q: `If dy/dx = ${k}y and y(0) = ${y0}, find y(1).`, a: `${y0}e${sup(k)}`, w: [`${y0}e`, `${y0 * k}e${sup(k)}`, `${y0} + e${sup(k)}`, `${y0}e${sup(-k)}`], e: `Separate and integrate: y = ${y0}e^(${k}x). At x = 1, y = ${y0}e${sup(k)}.` }; }
+      const a = ri(1, 4); return { q: `Solve dy/dx = x/y with y(0) = ${a} (y > 0).`, a: `y = √(x² + ${a * a})`, w: [`y = √(x² − ${a * a})`, `y = x²/2 + ${a}`, `y = ${a}e^(x²/2)`, `y = x² + ${a}`], e: `Separate: y dy = x dx, so y²/2 = x²/2 + C. Using y(0) = ${a}: y² = x² + ${a * a}.` }; } },
+    { t: 'euler differential equation', l: 3, f(){ const c = ri(1, 4), y1 = 1.5 * c, y2 = y1 + 0.5 * (0.5 + y1);
+      return { q: `Use Euler's method with step size 0.5 to approximate y(1) for dy/dx = x + y, y(0) = ${c}.`, a: dec(y2), w: [dec(y1), dec(2.25 * c), dec(y1 + 0.5 * (1 + y1)), dec(y2 + 0.5)], e: `Step 1: y(0.5) ≈ ${c} + 0.5(0 + ${c}) = ${dec(y1)}. Step 2: y(1) ≈ ${dec(y1)} + 0.5(0.5 + ${dec(y1)}) = ${dec(y2)}.` }; } },
+    { t: 'related rates', l: 2, f(){ const c = ri(2, 6), k = ri(1, 4);
+      if(Math.random() < 0.5) return { q: `A circle's radius grows at ${k} cm/s. How fast is its area growing when r = ${c} cm?`, a: pc(2 * c * k, 1, 'π') + ' cm²/s', w: [pc(c * c * k, 1, 'π') + ' cm²/s', pc(c * k, 1, 'π') + ' cm²/s', pc(2 * c * c * k, 1, 'π') + ' cm²/s', pc(c * c, 1, 'π') + ' cm²/s'], e: `A = πr², so dA/dt = 2πr·dr/dt = 2π(${c})(${k}) = ${pc(2 * c * k, 1, 'π')} cm²/s.` };
+      return { q: `A sphere's radius grows at ${k} cm/s. How fast is its volume growing when r = ${c} cm?`, a: pc(4 * c * c * k, 1, 'π') + ' cm³/s', w: [pc(4 * c * k, 1, 'π') + ' cm³/s', pc(4 * c * c * c * k, 3, 'π') + ' cm³/s', pc(2 * c * c * k, 1, 'π') + ' cm³/s', pc(4 * c * c, 1, 'π') + ' cm³/s'], e: `V = (4/3)πr³, so dV/dt = 4πr²·dr/dt = 4π(${c})²(${k}) = ${pc(4 * c * c * k, 1, 'π')} cm³/s.` }; } },
+    { t: 'algebra series', l: 1, f(){ const r = ri(0, 2);
+      if(r === 0){ const n = ri(10, 30), a = ri(2, 9), d = ri(2, 5), s = n * (2 * a + (n - 1) * d) / 2; if(s !== Math.floor(s)) return null;
+        return { q: `An arithmetic sequence has first term ${a} and common difference ${d}. What is the sum of its first ${n} terms?`, a: String(s), w: [String(2 * s), String(n * (a + (n - 1) * d)), String(s + n), String(s - a)], e: `Sₙ = n/2·(2a + (n − 1)d) = ${n}/2·(${2 * a} + ${(n - 1) * d}) = ${s}.` }; }
+      if(r === 1){ const n = ri(8, 12), k = ri(3, 5), v = binom(n, k);
+        return { q: `Evaluate C(${n}, ${k}), the number of ways to choose ${k} items from ${n}.`, a: String(v), w: [String(binom(n, k - 1)), String(binom(n + 1, k)), String(n * k), String(binom(n, k + 1))], e: `C(${n},${k}) = ${n}!/(${k}!·${n - k}!) = ${v}.` }; }
+      const pq = mpick([[3, 1], [4, 1], [4, 2], [5, 2], [3, 2]]), x = Math.pow(2, pq[0]), q = Math.pow(2, pq[1]), d = x - q;
+      return { q: `Solve log₂(x) + log₂(x − ${d}) = ${pq[0] + pq[1]}.`, a: String(x), w: [mn(-q), String(Math.pow(2, pq[0] + pq[1])), String(x + d), String(x - d)], e: `Combine: x(x − ${d}) = 2^${pq[0] + pq[1]} = ${x * q}. So x² − ${d}x − ${x * q} = 0 gives x = ${x} or x = −${q}. Only x = ${x} keeps both logs defined.` }; } }
+  ];
+  function mathQuestions(text, count, type, difficulty){
+    const t = String(text || '').toLowerCase(), maxL = difficulty === 'easy' ? 1 : difficulty === 'medium' ? 2 : 3;
+    const words = (t.match(/[a-z]+/g) || []);
+    let gens = MATH_GENS.filter(g => g.l <= maxL);
+    const picked = gens.filter(g => g.t.split(' ').some(k => k.length > 4 && words.some(w => w.indexOf(k.slice(0, 5)) === 0)) || (/integr|antiderivative/.test(t) && /integral/.test(g.t)) || (/series|taylor|converg/.test(t) && /series/.test(g.t)) || (/deriv|differentiat/.test(t) && /derivative/.test(g.t)) || (/limit/.test(t) && /limit/.test(g.t)));
+    if(picked.length >= 2) gens = picked;
+    if(!gens.length) gens = MATH_GENS;
+    const out = [], seen = new Set();
+    for(let tries = 0; tries < 600 && out.length < count; tries++){
+      const g = mpick(gens).f(); if(!g) continue;
+      const wrong = []; g.w.forEach(w => { if(w !== g.a && wrong.indexOf(w) < 0) wrong.push(w); });
+      if(wrong.length < 3) continue;
+      const wantTF = type === 'true_false' || (type === 'mixed' && out.length % 2 === 1);
+      let q;
+      if(wantTF){
+        const tru = Math.random() < 0.5, val = tru ? g.a : wrong[0];
+        q = { type: 'true_false', question: `${g.q} True or false: the answer is ${val}.`, options: ['True', 'False'], correctIndex: tru ? 0 : 1, explanation: g.e };
+      }else{
+        q = shuffleQuestion({ type: 'multiple_choice', question: g.q, options: [g.a].concat(wrong.slice(0, 3)), correctIndex: 0, explanation: g.e });
+      }
+      const k = normKey(q.question); if(!k || seen.has(k)) continue; seen.add(k); out.push(q);
+    }
+    return out;
+  }
+  const MATH_CARDS = [
+    'Power rule - d/dx[xⁿ] = n·xⁿ⁻¹', 'Product rule - (fg)′ = f′g + fg′', 'Quotient rule - (f/g)′ = (f′g − fg′)/g²', 'Chain rule - d/dx[f(g(x))] = f′(g(x))·g′(x)',
+    'd/dx[sin x] - cos x', 'd/dx[cos x] - −sin x', 'd/dx[tan x] - sec² x', 'd/dx[eˣ] - eˣ', 'd/dx[ln x] - 1/x', 'd/dx[aˣ] - aˣ ln a', 'd/dx[arctan x] - 1/(1 + x²)', 'd/dx[arcsin x] - 1/√(1 − x²)',
+    '∫ xⁿ dx (n ≠ −1) - xⁿ⁺¹/(n + 1) + C', '∫ 1/x dx - ln|x| + C', '∫ eˣ dx - eˣ + C', '∫ sin x dx - −cos x + C', '∫ cos x dx - sin x + C', '∫ sec² x dx - tan x + C', '∫ 1/(1 + x²) dx - arctan x + C',
+    'Integration by parts - ∫ u dv = uv − ∫ v du', 'Fundamental Theorem of Calculus - ∫ₐᵇ f(x) dx = F(b) − F(a), and d/dx ∫ₐˣ f(t) dt = f(x)', 'Average value of f on [a, b] - (1/(b − a))·∫ₐᵇ f(x) dx',
+    'Disk method volume - V = π∫ₐᵇ [R(x)]² dx', 'Arc length of y = f(x) - L = ∫ₐᵇ √(1 + [f′(x)]²) dx', 'Parametric derivative - dy/dx = (dy/dt)/(dx/dt)', 'Polar area - A = ½∫ r² dθ', 'Polar to rectangular - x = r cos θ, y = r sin θ',
+    'L′Hôpital\'s rule - If lim f/g is 0/0 or ∞/∞, then lim f/g = lim f′/g′', 'Mean Value Theorem - If f is continuous on [a, b] and differentiable on (a, b), some c has f′(c) = (f(b) − f(a))/(b − a)',
+    'Geometric series sum - ∑ arⁿ = a/(1 − r) for |r| < 1', 'p-series test - ∑ 1/nᵖ converges if p > 1 and diverges if p ≤ 1', 'Ratio test - Let L = lim |aₙ₊₁/aₙ|. Converges if L < 1, diverges if L > 1, inconclusive if L = 1',
+    'Alternating series test - ∑ (−1)ⁿbₙ converges if bₙ decreases to 0', 'Alternating series error bound - |error| ≤ the first omitted term', 'Maclaurin series of eˣ - 1 + x + x²/2! + x³/3! + …', 'Maclaurin series of sin x - x − x³/3! + x⁵/5! − …',
+    'Maclaurin series of cos x - 1 − x²/2! + x⁴/4! − …', 'Maclaurin series of 1/(1 − x) - 1 + x + x² + x³ + … for |x| < 1', 'Maclaurin series of ln(1 + x) - x − x²/2 + x³/3 − … for −1 < x ≤ 1',
+    'Lagrange error bound - |Rₙ(x)| ≤ M|x − a|ⁿ⁺¹/(n + 1)!', 'Logistic growth - dP/dt = kP(1 − P/L), with limiting value L', 'Euler\'s method - yₙ₊₁ = yₙ + h·f(xₙ, yₙ)',
+    'Pythagorean identity - sin²θ + cos²θ = 1', 'Double angle (sine) - sin 2θ = 2 sin θ cos θ', 'Double angle (cosine) - cos 2θ = cos²θ − sin²θ', 'Quadratic formula - x = (−b ± √(b² − 4ac))/(2a)',
+    'Sum of an arithmetic series - Sₙ = n/2·(2a + (n − 1)d)', 'Binomial coefficient - C(n, k) = n!/(k!(n − k)!)', 'Log product rule - log(ab) = log a + log b'
+  ];
+  const VOCAB_BANK = {
+    es: ['hola - hello', 'adiós - goodbye', 'por favor - please', 'gracias - thank you', 'lo siento - I am sorry', 'buenos días - good morning', 'buenas noches - good night', 'el perro - the dog', 'el gato - the cat', 'la casa - the house', 'el agua - the water', 'la comida - the food', 'el pan - the bread', 'la escuela - the school', 'el libro - the book', 'la familia - the family', 'el amigo - the friend', 'la ciudad - the city', 'el tiempo - the weather / time', 'el trabajo - the work', 'comer - to eat', 'beber - to drink', 'hablar - to speak', 'vivir - to live', 'tener - to have', 'ser - to be (permanent)', 'estar - to be (state or place)', 'ir - to go', 'querer - to want', 'poder - to be able to', 'uno - one', 'dos - two', 'tres - three', 'diez - ten', 'cien - one hundred', 'rojo - red', 'azul - blue', 'verde - green', 'grande - big', 'pequeño - small', 'rápido - fast', 'siempre - always', 'nunca - never', 'ayer - yesterday', 'mañana - tomorrow', 'dónde - where', 'cuándo - when', 'por qué - why', 'cómo - how'],
+    fr: ['bonjour - hello', 'au revoir - goodbye', 's\'il vous plaît - please', 'merci - thank you', 'désolé - sorry', 'bonsoir - good evening', 'bonne nuit - good night', 'le chien - the dog', 'le chat - the cat', 'la maison - the house', 'l\'eau - the water', 'la nourriture - the food', 'le pain - the bread', 'l\'école - the school', 'le livre - the book', 'la famille - the family', 'l\'ami - the friend', 'la ville - the city', 'le temps - the weather / time', 'le travail - the work', 'manger - to eat', 'boire - to drink', 'parler - to speak', 'vivre - to live', 'avoir - to have', 'être - to be', 'aller - to go', 'vouloir - to want', 'pouvoir - to be able to', 'faire - to do / make', 'un - one', 'deux - two', 'trois - three', 'dix - ten', 'cent - one hundred', 'rouge - red', 'bleu - blue', 'vert - green', 'grand - big', 'petit - small', 'rapide - fast', 'toujours - always', 'jamais - never', 'hier - yesterday', 'demain - tomorrow', 'où - where', 'quand - when', 'pourquoi - why', 'comment - how']
+  };
+  function pairsFromLines(lines){ return lines.map(l => { const i = l.indexOf(' - '); return i > 0 ? { a: l.slice(0, i).trim(), b: l.slice(i + 3).trim() } : null; }).filter(Boolean); }
+  // A "word - meaning" list in the notes (4+ pairs, most lines) becomes translation questions.
+  function iqPairs(text){
+    const lines = String(text || '').split(/\n+/).map(l => l.trim()).filter(Boolean), out = [];
+    lines.forEach(line => {
+      const m = /^[-•*\d.)\s]*([^:–—=→]{1,50}?)\s*(?::|–|—| - |=|→)\s*(.{1,60})$/.exec(line);
+      if(m && m[2].split(/\s+/).length <= 7 && !/[.!?]\s*$/.test(m[2])) out.push({ a: m[1].trim(), b: m[2].trim() });
+    });
+    return out.length >= 4 && out.length >= 0.6 * lines.length ? out : null;
+  }
+  function instantVocabQuestions(pairs, count, type){
+    if(!pairs || pairs.length < 4) return [];
+    const out = [], seen = new Set(), n = pairs.length;
+    for(let r = 0; r < 4 && out.length < count; r++){
+      const order = pairs.map((_, i) => i).sort(() => Math.random() - 0.5);
+      for(const i of order){
+        if(out.length >= count) break;
+        const fwd = (i + r) % 2 === 0, p = pairs[i], ask = fwd ? p.a : p.b, ans = fwd ? p.b : p.a;
+        const pool = pairs.filter((_, j) => j !== i).map(x => fwd ? x.b : x.a).filter(x => x !== ans);
+        const wrong = []; pool.sort(() => Math.random() - 0.5).forEach(x => { if(wrong.length < 3 && wrong.indexOf(x) < 0) wrong.push(x); });
+        if(wrong.length < 3) continue;
+        const tf = type === 'true_false' || (type === 'mixed' && out.length % 2 === 1);
+        let q;
+        if(tf){
+          const tru = Math.random() < 0.5, shown = tru ? ans : wrong[0];
+          q = { type: 'true_false', question: fwd ? `True or false: "${ask}" means "${shown}".` : `True or false: "${shown}" means "${ask}".`, options: ['True', 'False'], correctIndex: tru ? 0 : 1, explanation: `${p.a} means ${p.b}.` };
+        }else{
+          q = shuffleQuestion({ type: 'multiple_choice', question: fwd ? `What does "${ask}" mean?` : `Which one means "${ask}"?`, options: [ans].concat(wrong), correctIndex: 0, explanation: `${p.a} means ${p.b}.` });
+        }
+        const k = normKey(q.question); if(!k || seen.has(k)) continue; seen.add(k); out.push(q);
+      }
+    }
+    return out;
+  }
+  function instantQuizFor(text, count, type, difficulty){
+    if(activeSubject === 'math') return mathQuestions(activeSubjectText, count, type, difficulty);
+    if((activeSubject === 'es' || activeSubject === 'fr') && activeSubjectNoNotes) return instantVocabQuestions(pairsFromLines(VOCAB_BANK[activeSubject]), count, type);
+    return instantQuestions(text, count, type);
+  }
+  function instantCardsFor(text, count){
+    if(activeSubject === 'math') return MATH_CARDS.slice().sort(() => Math.random() - 0.5).slice(0, count).map(l => { const i = l.indexOf(' - '); return { term: l.slice(0, i), definition: l.slice(i + 3) }; });
+    if((activeSubject === 'es' || activeSubject === 'fr') && activeSubjectNoNotes) return pairsFromLines(VOCAB_BANK[activeSubject]).sort(() => Math.random() - 0.5).slice(0, count).map(p => ({ term: p.a, definition: p.b }));
+    return instantFlashcards(text, count);
+  }
+  const JUNK_RE = /\]\(https?:|https?:\/\/|\bwww\.[a-z0-9-]+\.|\bsign in\b|\blog in\b|check that your link/i;
+  function isJunkQuestion(q){ return !!q && (JUNK_RE.test(String(q.question || '')) || (Array.isArray(q.options) && q.options.some(o => JUNK_RE.test(String(o))))); }
+
   function instantQuestions(text, count, type){
+    const _pairs = iqPairs(text); if(_pairs) return instantVocabQuestions(_pairs, count, type);
     const prep = iqPrepare(text), out = [], seen = new Set();
     const add = q => { if(!q) return; const k = normKey(q.question); if(!k || seen.has(k)) return; seen.add(k); out.push(q); };
     for(let p = 0; p < 8 && out.length < count; p++){
@@ -4365,6 +4581,8 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
 
   $('generateBtn').addEventListener('click', async ()=>{
     let topicText = $('genInput').value.trim();
+    activeSubject = detectSubject(topicText); activeSubjectNoNotes = !!activeSubject; activeSubjectText = topicText;
+    if(activeSubject) topicText = SUBJECT_DEFAULT_TEXT[activeSubject];
     if(!topicText && !quizAttachedImage){ nudge($('genInput')); return; }
     topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/[ \t]+/g, ' ').replace(/\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
     if(!topicText && !quizAttachedImage){ $('genStatus').innerHTML = NEED_CONTEXT_MSG; nudge($('genInput')); return; }
@@ -4440,7 +4658,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
           if(allQuestions.length < count) await sleep(100);
         });
       }else if(!cloudAvailable()){
-        allQuestions = instantQuestions(topicText, count, type);
+        allQuestions = instantQuizFor(topicText, count, type, difficulty);
         if(allQuestions.length === 0){ $('genStatus').innerHTML = INSTANT_SHORT; nudge($('genInput')); return; }
         toast(INSTANT_NOTE);
       }else{
@@ -4457,7 +4675,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
         if(allQuestions.length > 0 && allQuestions.length < count){
           // the AI fell short (limits, repeats): fill the rest from the notes so the count is exact
           const have = new Set(allQuestions.map(x => normKey(x.question)));
-          allQuestions = allQuestions.concat(instantQuestions(topicText, count, type).filter(x => !have.has(normKey(x.question)))).slice(0, count);
+          allQuestions = allQuestions.concat(instantQuizFor(topicText, count, type, difficulty).filter(x => !have.has(normKey(x.question)))).slice(0, count);
         }
       }
 
@@ -4590,12 +4808,10 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
 
   function mediaFormHtml(idPrefix, existing){
     existing = existing || {};
-    const showUrlVal = (existing.image && !existing.image.startsWith('data:')) ? existing.image : '';
     return `
       <div class="media-edit-form">
-        ${existing.image ? `<p class="hint" style="margin:0 0 8px;">Already has an image${existing.image.startsWith('data:') ? ' (uploaded file)' : ''} -- upload a new one or paste a URL to replace it, or leave blank to keep it.</p>` : ''}
-        <div class="field"><label class="field-label">Image URL</label>
-          <input type="text" id="${idPrefix}ImageUrl" placeholder="https://..." value="${escapeHtml(showUrlVal)}"></div>
+        <p class="hint" style="margin:0 0 8px;">Backup Links: keep the text source here to find it faster.</p>
+        ${existing.image ? `<p class="hint" style="margin:0 0 8px;">Already has an image -- upload a new one to replace it, or leave blank to keep it.</p>` : ''}
         <div class="field"><label class="field-label">Or upload an image</label>
           <input type="file" accept="image/*" id="${idPrefix}ImageFile"></div>
         <div class="field"><label class="field-label">Source link</label>
@@ -4613,7 +4829,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     existing = existing || {};
     let image = existing.image || null;
     const fileInput = $(idPrefix+'ImageFile');
-    const urlVal = ($(idPrefix+'ImageUrl').value || '').trim();
     if(fileInput && fileInput.files && fileInput.files[0]){
       try{
         image = await new Promise((resolve, reject)=>{
@@ -4623,8 +4838,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
           reader.readAsDataURL(fileInput.files[0]);
         });
       }catch(e){ console.warn('image read failed'); }
-    }else if(urlVal){
-      image = urlVal;
     }
     const sourceUrl = ($(idPrefix+'SourceUrl').value || '').trim() || null;
     const sourceLabel = ($(idPrefix+'SourceLabel').value || '').trim() || null;
@@ -4956,13 +5169,12 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
         </div>
       </div>
       <div class="row2">
-        <button class="btn btn-ghost" id="saveTestBtn">Save this quiz</button>
         <button class="btn btn-ghost" data-share="link">🔗 Share link</button>
         <button class="btn btn-ghost" data-share="print">🖨 Print</button>
       </div>
       <div class="card">
-        <h2>Attach media <span style="color:var(--text-faint); font-weight:400; font-size:13px;">optional</span></h2>
-        <p class="hint">Add a picture or source link to any question -- shown while playing.</p>
+        <h2>Backup Links</h2>
+        <p class="hint">Save the text source here to find it faster, not search the browser again.</p>
         <div id="quizMediaList"></div>
       </div>`;
     $('playBtn').addEventListener('click', ()=>{ currentQuiz.started = true; openGameOverlay(); });
@@ -4992,7 +5204,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
           <div class="deck-row-sub">${qq.image?'🖼 image ':''}${qq.sourceUrl?'🔗 source':''}</div>
         </div>
         <div class="deck-row-actions">
-          <button class="btn btn-ghost btn-sm quiz-media-edit-btn" data-qi="${i}">📎 Edit</button>
+          <button class="btn btn-ghost btn-sm quiz-media-edit-btn" data-qi="${i}">🔗 Backup Links</button>
         </div>
       </div>
       <div id="quizMediaForm${i}"></div>`).join('');
@@ -5006,7 +5218,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
           const updated = await readMediaForm('quizQ'+qi, q.questions[qi]);
           q.questions[qi] = Object.assign({}, q.questions[qi], updated);
           persistQuestionMediaEdit(qi);
-          toast('Media saved.');
+          toast('Saved.');
           renderQuizMediaList();
         });
         $('quizQ'+qi+'CancelBtn').addEventListener('click', ()=>{ container.innerHTML = ''; });
