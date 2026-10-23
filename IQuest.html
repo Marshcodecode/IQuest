@@ -1091,7 +1091,7 @@
       <p class="hint">Paste your notes or a textbook excerpt. The AI writes questions from it — always double-check answers against your actual material.</p>
       <div class="gen-form-grid">
         <div class="gen-form-col">
-          <div class="field"><label class="field-label">Your notes</label><textarea id="genInput" placeholder="Paste your notes here, e.g. your biology notes on cell division"></textarea><textarea id="genLinkTa" hidden tabindex="-1" aria-hidden="true"></textarea><div class="try-row" id="genTryRow" data-for="genInput"><button type="button" class="try-chip clear-links" id="genClearLinks" style="display:none; margin-left:auto;">Remove links</button></div></div>
+          <div class="field"><label class="field-label">Your notes</label><textarea id="genInput" placeholder="Paste your notes here, e.g. your biology notes on cell division"></textarea><div class="try-row" id="genTryRow" data-for="genInput"></div></div>
           <div class="field attach-wrap">
             <input type="file" id="genFileInput-files" accept=".txt,.csv,.docx,.xlsx" style="display:none;">
             <button type="button" class="btn btn-ghost btn-sm attach-btn" id="genFileBtn" style="width:auto;">📎 Attach files</button>
@@ -1160,7 +1160,7 @@
       <p class="hint">Paste your notes or a list of terms. The AI writes term/definition cards from it — flip each one to check yourself, then rate how well you knew it.</p>
       <div class="gen-form-grid">
         <div class="gen-form-col">
-          <div class="field"><label class="field-label">Your notes</label><textarea id="flashInput" placeholder="e.g. Paste your vocabulary list, key dates, or formulas"></textarea><textarea id="flashLinkTa" hidden tabindex="-1" aria-hidden="true"></textarea><div class="try-row" id="flashTryRow" data-for="flashInput"><button type="button" class="try-chip clear-links" id="flashClearLinks" style="display:none; margin-left:auto;">Remove links</button></div></div>
+          <div class="field"><label class="field-label">Your notes</label><textarea id="flashInput" placeholder="e.g. Paste your vocabulary list, key dates, or formulas"></textarea><div class="try-row" id="flashTryRow" data-for="flashInput"></div></div>
           <div class="field attach-wrap">
             <input type="file" id="flashFileInput-files" accept=".txt,.csv,.docx,.xlsx" style="display:none;">
             <button type="button" class="btn btn-ghost btn-sm attach-btn" id="flashFileBtn" style="width:auto;">📎 Attach files</button>
@@ -1330,6 +1330,19 @@
   // A raw slice of pasted notes (e.g. topicText.slice(0,80)) often cuts mid-sentence
   // and reads like a broken fragment as a quiz/deck title, so short inputs pass through
   // untouched while long ones are cut at a word boundary and marked with an ellipsis.
+  // A short title for a quiz or deck, based on what was entered: a short first line is used as is,
+  // otherwise the most repeated meaningful words become the title.
+  function makeTitle(text){
+    const t = String(text || '').replace(/https?:\/\/\S+/g, ' ').trim();
+    if(!t) return 'Untitled';
+    const first = t.split(/\n+/)[0].replace(/^(topic|title)\s*:\s*/i, '').replace(/[.!?:]+$/, '').trim();
+    if(first.length >= 3 && first.length <= 48 && !/[.!?]\s/.test(first)) return first.charAt(0).toUpperCase() + first.slice(1);
+    const freq = {};
+    (t.toLowerCase().match(/[\p{L}][\p{L}'’-]{3,}/gu) || []).forEach(w => { if(!IQ_STOP.has(w)) freq[w] = (freq[w] || 0) + 1; });
+    const top = Object.keys(freq).sort((a, b) => freq[b] - freq[a] || b.length - a.length).slice(0, 3);
+    if(!top.length) return deriveLabel(t, 48);
+    return top.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' · ');
+  }
   function deriveLabel(text, maxLen){
     maxLen = maxLen || 60;
     const trimmed = (text || '').trim().replace(/\s+/g, ' ');
@@ -1632,7 +1645,6 @@
   function videoClause(text){
     const t = String(text || '');
     let out = '';
-    if(/\[Website:/.test(t)) out += 'The material includes text taken from web pages the student provided. Base the questions on that text.\n';
     return out;
   }
 
@@ -1944,10 +1956,10 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   }
 
   $('flashGenerateBtn').addEventListener('click', async ()=>{
-    let topicText = ($('flashInput').value + '\n\n' + (($('flashLinkTa') || {}).value || '')).trim();
+    let topicText = $('flashInput').value.trim();
     if(!topicText && !flashAttachedImage){ nudge($('flashInput')); return; }
-    if(!flashAttachedImage && linkOnlyNeedsContext(topicText)){ const _h = urlHint(topicText); if(_h){ topicText = topicText + '\n\nTopic from the link address: ' + _h; } else { $('flashGenStatus').innerHTML = NEED_CONTEXT_MSG; nudge($('flashInput')); return; } }
-    if(!/\[Website:/.test(topicText)) topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim();
+    topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/[ \t]+/g, ' ').replace(/\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if(!topicText && !flashAttachedImage){ $('flashGenStatus').innerHTML = NEED_CONTEXT_MSG; nudge($('flashInput')); return; }
 
     let count = parseInt($('flashCount').value, 10);
     if(!count || count < 1) count = 10;
@@ -1969,7 +1981,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
       if(useWebLLM && flashAttachedImage){
         const got = await scanImageIntoNotes(flashAttachedImage, 'flashInput', 'flashFileChip', $('flashGenStatus'));
         if(got === null) return;
-        topicText = (got + '\n\n' + (($('flashLinkTa') || {}).value || '')).trim();
+        topicText = got.trim();
       }
       if(useWebLLM && webllmState !== 'ready'){
         $('flashGenerateBtn').innerHTML = `<span class="spinner" style="border-color:rgba(35,20,0,0.3); border-top-color:#231400;"></span>Loading AI…`;
@@ -2043,7 +2055,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
       if(allCards.length === 0) throw new Error(useWebLLM ? 'The on-device model could not produce usable flashcards — try shorter notes.' : 'No flashcards generated');
       allCards = allCards.slice(0, count);
 
-      const deck = { id: uid(), topic: deriveLabel(topicText, 60), createdAt: Date.now(), cards: allCards };
+      const deck = { id: uid(), topic: makeTitle(topicText), createdAt: Date.now(), cards: allCards };
       flashDecks.unshift(deck);
       await persistFlashDecks();
       renderFlashDeckList();
@@ -3537,36 +3549,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
 
   /* ===================== Input polish: link rows, topic chips, rotating hints, styled dropdowns ===================== */
   (function wireInputPolish(){
-    [['genUrl','genUrlBtn','genInput'], ['flashUrl','flashUrlBtn','flashInput']].forEach(([uid, bid, tid]) => {
-      const inp = $(uid), btn = $(bid), ta = $(tid); if(!inp || !btn || !ta) return;
-      function add(){
-        let v = inp.value.trim(); if(!v){ nudge(inp); return; }
-        if(!/^https?:\/\//i.test(v)) v = 'https://' + v;
-        if(!/^https?:\/\/[^\s.]+\.[^\s]{2,}$/i.test(v)){ nudge(inp); return; }
-        const buf = $(tid.replace('Input', 'LinkTa'));
-        // The link stays visible in the box. Adding another one replaces the previous link.
-        const trow = $(tid.replace('Input', 'TryRow')); let nb = trow && trow.nextElementSibling;
-        while(nb && nb.classList && nb.classList.contains('link-box')){ if(nb._reset) nb._reset(); nb = nb.nextElementSibling; }
-        buf.value = v;
-        inp.value = v;
-        $(uid + 'Row').classList.add('has-link');
-        buf.dispatchEvent(new Event('input', { bubbles:true }));
-        const clr = $(tid.replace('Input', 'ClearLinks')); if(clr) clr.style.display = '';
-        const old = btn.textContent; btn.textContent = 'Added'; setTimeout(() => { btn.textContent = old; }, 1200);
-      }
-      btn.addEventListener('click', add);
-      inp.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); add(); } });
-      inp.addEventListener('paste', () => setTimeout(() => { if(/^\s*(https?:\/\/|www\.)\S+\s*$/i.test(inp.value)) add(); }, 40));
-    });
-    ['gen', 'flash'].forEach(pre => {
-      const clr = $(pre + 'ClearLinks'), buf = $(pre + 'LinkTa'); if(!clr || !buf) return;
-      clr.addEventListener('click', () => {
-        buf.value = ''; clr.style.display = 'none'; const ui = $(pre + 'Url'); if(ui) ui.value = ''; const ur = $(pre + 'UrlRow'); if(ur) ur.classList.remove('has-link');
-        buf.dispatchEvent(new Event('input', { bubbles:true }));
-        const row = $(pre + 'TryRow'); let n = row.nextElementSibling;
-        while(n && n.classList && n.classList.contains('link-box')){ if(n._reset) n._reset(); n = n.nextElementSibling; }
-      });
-    });
     [['genStatus','genInput','generateBtn'], ['flashGenStatus','flashInput','flashGenerateBtn']].forEach(([sid, tid, bid]) => {
       const st = $(sid); if(!st) return;
       function go(){
@@ -3586,7 +3568,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     });
     const HINTS = {
       genInput: ["Paste your biology notes on cell division…", "Drop in a textbook paragraph…", "Type or paste anything you want to learn…"],
-      flashInput: ["Paste your vocabulary list…", "Key dates, formulas, definitions…", "Paste a website link to make cards from it…"],
+      flashInput: ["Paste your vocabulary list…", "Key dates, formulas, definitions…", "Type or paste anything you want to turn into cards…"],
       planInput: ["Cell division, photosynthesis, genetics…", "Chapters 4 to 9 of your textbook…", "Paste your syllabus…"]
     };
     Object.keys(HINTS).forEach(id => {
@@ -3838,77 +3820,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
     appStorage.get(PLAN_KEY).then(r=>{ try{ if(r && r.value && r.value!=='null'){ planState = JSON.parse(r.value); planRender(); } }catch(e){} }).catch(()=>{});
   })();
 
-  /* ===================== Website sources ===================== */
-  const SITE_NOTE_RE = /\n*\[Website:[^\n]*\]\n[^\n]*\n\[end of website\]/g;
-  function siteUrlsIn(text){
-    const out = [], seen = {};
-    (String(text).match(/https?:\/\/[^\s<>"')]+/gi) || []).forEach(u => {
-      u = u.replace(/[.,;:!?]+$/, '');
-      if(/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(u)) return;
-      if(!seen[u]){ seen[u] = 1; out.push(u); }
-    });
-    return out;
-  }
-  function htmlToReadableText(html){
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    doc.querySelectorAll('script,style,noscript,nav,footer,header,aside,form,svg,iframe').forEach(n => n.remove());
-    const root = doc.querySelector('article') || doc.querySelector('main') || doc.body;
-    const title = (doc.querySelector('title') || {}).textContent || '';
-    const text = (root ? root.textContent : '').replace(/\s+/g, ' ').trim();
-    return { title: title.trim(), text };
-  }
-  async function fetchSite(url){
-    // 1) straight from the page (works for sites that allow it)
-    try{
-      const r = await fetchWithTimeout(url, 8000);
-      if(r.ok){ const out = htmlToReadableText(await r.text()); if(out.text.length > 200) return out; }
-    }catch(e){}
-    // 2) a public "reader" service that returns the page as plain text
-    try{
-      const r = await fetchWithTimeout('https://r.jina.ai/' + url, 15000);
-      if(r.ok){
-        const raw = (await r.text()).trim();
-        const tm = raw.match(/^Title:\s*(.+)$/m);
-        const body = raw.replace(/^(Title|URL Source|Published Time|Markdown Content):.*$/gm, '').replace(/\s+/g, ' ').trim();
-        if(body.length > 200) return { title: tm ? tm[1].trim() : '', text: body };
-      }
-    }catch(e){}
-    return null;
-  }
-  function wireWebsites(textareaId, anchorId){
-    const ta = $(textareaId), anchor = $(anchorId);
-    if(!ta || !anchor) return;
-    const box = document.createElement('div'); box.style.display = 'none';
-    anchor.insertAdjacentElement('afterend', box);
-    const done = {}; let timer = null;
-    box.className = 'link-box'; box._reset = () => { Object.keys(done).forEach(k => delete done[k]); box.innerHTML = ''; box.style.display = 'none'; };
-    async function scan(){
-      const urls = siteUrlsIn(ta.value.replace(SITE_NOTE_RE, ''));
-      await asyncLoop(urls.length, async (k) => {
-        const url = urls[k];
-        if(done[url]) return;
-        done[url] = true;
-        box.style.display = 'block';
-        const chip = document.createElement('div'); chip.className = 'yt-chip';
-        chip.innerHTML = `<div style="font-size:22px; width:64px; text-align:center;">🌐</div><div><div class="yt-t"></div><div class="yt-s">Reading that page…</div></div>`;
-        chip.querySelector('.yt-t').textContent = url.replace(/^https?:\/\//, '').slice(0, 60);
-        box.appendChild(chip);
-        const page = await fetchSite(url);
-        if(!page){ chip.querySelector('.yt-s').textContent = "Couldn't open that page from here — copy its text and paste it into the box instead."; return; }
-        chip.querySelector('.yt-t').textContent = '🌐 ' + (page.title || url).slice(0, 80);
-        chip.querySelector('.yt-s').textContent = 'Page text added — questions will use it.';
-        ta.value = ta.value.replace(SITE_NOTE_RE, m => m) + `\n\n[Website: ${page.title || url} — ${url}]\n${page.text.slice(0, 14000)}\n[end of website]`;
-      });
-    }
-    ta.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(scan, 700); });
-    ta.addEventListener('paste', () => { setTimeout(scan, 100); });
-  }
-  wireWebsites('genInput', 'genFileChip');
-  wireWebsites('flashInput', 'flashFileChip');
-  wireWebsites('genLinkTa', 'genTryRow');
-  wireWebsites('flashLinkTa', 'flashTryRow');
-
-  /* ===================== Drag & drop (files, Google Images, links) ===================== */
+  /* ===================== Drag & drop (files) ===================== */
   (function(){
     const veil = document.createElement('div');
     veil.className = 'drop-veil';
@@ -4369,21 +4281,6 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   }
 
   // A bare link with nothing readable behind it can't be turned into questions. Ask for a few words instead of failing.
-  function linkOnlyNeedsContext(text){
-    const t = String(text || '');
-    if(/\[Website:/.test(t)) return false;
-    if(!/(?:https?:\/\/|www\.)\S+/i.test(t)) return false;
-    const rest = t.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim();
-    return rest.length < 6;
-  }
-  function urlHint(text){
-    const m = String(text||'').match(/(?:https?:\/\/|www\.)[^\s]+/i); if(!m) return '';
-    let u; try{ u = new URL(/^www\./i.test(m[0]) ? 'https://'+m[0] : m[0]); }catch(e){ return ''; }
-    if(/(^|\.)(youtube\.com|youtu\.be)$/i.test(u.hostname)) return '';
-    if(/\.(pdf|docx?|pptx?|xlsx?|csv|zip|png|jpe?g|gif|webp|mp4|mp3)$/i.test(u.pathname)) return '';
-    const words = decodeURIComponent(u.pathname).split(/[\/\-_.+]+/).filter(w=>/^[a-z]{3,}$/i.test(w) && !/^(html?|php|aspx?|www|index|wiki|article|articles|page|post|posts)$/i.test(w));
-    return words.length >= 2 ? words.slice(0,8).join(' ') : '';
-  }
   const NEED_CONTEXT_MSG = `<div class="card need-ctx" style="border-color:rgba(167,139,250,.55);">
     <div style="font-weight:700; margin-bottom:4px;">One quick thing</div>
     <div style="font-size:13.5px; opacity:.85; margin-bottom:10px;">Paste your notes in the box and I'll make the quiz from them.</div>
@@ -4467,10 +4364,10 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
   }
 
   $('generateBtn').addEventListener('click', async ()=>{
-    let topicText = ($('genInput').value + '\n\n' + (($('genLinkTa') || {}).value || '')).trim();
+    let topicText = $('genInput').value.trim();
     if(!topicText && !quizAttachedImage){ nudge($('genInput')); return; }
-    if(!quizAttachedImage && linkOnlyNeedsContext(topicText)){ const _h = urlHint(topicText); if(_h){ topicText = topicText + '\n\nTopic from the link address: ' + _h; } else { $('genStatus').innerHTML = NEED_CONTEXT_MSG; nudge($('genInput')); return; } }
-    if(!/\[Website:/.test(topicText)) topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim();
+    topicText = topicText.replace(/(?:https?:\/\/|www\.)\S+/gi, ' ').replace(/[ \t]+/g, ' ').replace(/\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if(!topicText && !quizAttachedImage){ $('genStatus').innerHTML = NEED_CONTEXT_MSG; nudge($('genInput')); return; }
 
     let count = parseInt($('genCount').value, 10);
     if(!count || count < 1) count = 5;
@@ -4494,7 +4391,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
       if(useWebLLM && quizAttachedImage){
         const got = await scanImageIntoNotes(quizAttachedImage, 'genInput', 'genFileChip', $('genStatus'));
         if(got === null) return;
-        topicText = (got + '\n\n' + (($('genLinkTa') || {}).value || '')).trim();
+        topicText = got.trim();
       }
       if(useWebLLM && webllmState !== 'ready'){
         $('generateBtn').innerHTML = `<span class="spinner" style="border-color:rgba(35,20,0,0.3); border-top-color:#231400;"></span>Loading AI…`;
@@ -4572,7 +4469,7 @@ Respond with ONLY a raw JSON array, no markdown code fences, no prose before or 
       if(allQuestions.length === 0) throw new Error(useWebLLM ? 'The on-device model could not produce usable questions — try shorter notes.' : 'No questions generated');
       allQuestions = allQuestions.slice(0, count);
 
-      currentQuiz = { id: uid(), topic: deriveLabel(topicText, 60), createdAt: Date.now(), questions: allQuestions,
+      currentQuiz = { id: uid(), topic: makeTitle(topicText), createdAt: Date.now(), questions: allQuestions,
         started:false, finished:false, current:0, score:0, streak:0, bestStreak:0, correctCount:0 };
       $('genStatus').innerHTML = '';
       whenReady(() => renderQuiz());
